@@ -12,6 +12,7 @@ PluginComponent {
   property string activeProfile: "Balanced"
   property string activeGpuMode: "Unknown"
   property var supportedGpuModes: []
+  property var supportedPowerProfiles: []
 
   readonly property string colorPerf: "#F38BA8"
   readonly property string colorBal: "#CBA6F7"
@@ -20,11 +21,11 @@ PluginComponent {
 
   Process {
     id: procPowerGet
-    command: ["asusctl", "profile", "-p"]
+    command: ["asusctl", "profile", "get"]
     stdout: SplitParser {
       onRead: line => {
-        var match = line.trim().match(/(\w+)$/)
-        if (match && ["Quiet", "Balanced", "Performance"].includes(match[1])) {
+        var match = line.trim().match(/Active profile:\s*(\w+)/)
+        if (match) {
           root.activeProfile = match[1]
         }
       }
@@ -55,8 +56,26 @@ PluginComponent {
   }
 
   Process {
+    id: procProfileList
+    command: ["asusctl", "profile", "list"]
+    onRunningChanged: {
+      if (!running) {
+        root.supportedPowerProfiles = root.supportedPowerProfiles.filter(p => p.length > 0)
+      }
+    }
+    stdout: SplitParser {
+      onRead: line => {
+        var clean = line.trim()
+        if (clean.length > 0 && !root.supportedPowerProfiles.includes(clean)) {
+          root.supportedPowerProfiles = root.supportedPowerProfiles.concat([clean])
+        }
+      }
+    }
+  }
+
+  Process {
     id: procPowerSet
-    command: ["asusctl", "profile", "-P", "Balanced"] 
+    command: ["asusctl", "profile", "set", "Balanced"] 
     stderr: SplitParser { onRead: line => ToastService.showError("ASUS Error", line) }
     onExited: code => { 
       if(code === 0) { 
@@ -131,10 +150,11 @@ PluginComponent {
 
   Component.onCompleted: {
     procGpuList.running = true
+    procProfileList.running = true
   }
 
   function setPowerProfile(name) {
-    procPowerSet.command = ["asusctl", "profile", "-P", name]
+    procPowerSet.command = ["asusctl", "profile", "set", name]
     procPowerSet.running = true
     root.activeProfile = name
   }
@@ -201,10 +221,11 @@ PluginComponent {
             width: parent.width
 
             Repeater {
-              model: ["Quiet", "Balanced", "Performance"]
+              id: profileRepeater
+              model: root.supportedPowerProfiles.length > 0 ? root.supportedPowerProfiles : ["Quiet", "Balanced", "Performance"]
 
               StyledRect {
-                width: (parent.width - (Theme.spacingS * 2)) / 3
+                width: (parent.width - (Theme.spacingS * (profileRepeater.count - 1))) / profileRepeater.count
                 height: 70
                 radius: Theme.cornerRadius
 
