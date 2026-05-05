@@ -13,6 +13,8 @@ PluginComponent {
   property string activeGpuMode: "Unknown"
   property var supportedGpuModes: []
   property var supportedPowerProfiles: []
+  property int batteryLevel: 0
+  property bool showBatteryIcon: false
 
   readonly property string colorPerf: "#F38BA8"
   readonly property string colorBal: "#CBA6F7"
@@ -68,6 +70,19 @@ PluginComponent {
         var clean = line.trim()
         if (clean.length > 0 && !root.supportedPowerProfiles.includes(clean)) {
           root.supportedPowerProfiles = root.supportedPowerProfiles.concat([clean])
+        }
+      }
+    }
+  }
+
+  Process {
+    id: procBatteryGet
+    command: ["sh", "-c", "cat /sys/class/power_supply/*/capacity"]
+    stdout: SplitParser {
+      onRead: line => {
+        var level = parseInt(line.trim())
+        if (!isNaN(level)) {
+          root.batteryLevel = level
         }
       }
     }
@@ -145,12 +160,14 @@ PluginComponent {
     onTriggered: {
       procPowerGet.running = true
       procGpuGet.running = true
+      procBatteryGet.running = true
     }
   }
 
   Component.onCompleted: {
     procGpuList.running = true
     procProfileList.running = true
+    procBatteryGet.running = true
   }
 
   function setPowerProfile(name) {
@@ -180,13 +197,23 @@ PluginComponent {
 
   horizontalBarPill: Component {
     Item {
-      implicitWidth: Theme.iconSize
+      implicitWidth: root.showBatteryIcon ? 70 : Theme.iconSize
       implicitHeight: Theme.iconSize
-      DankIcon {
-        name: root.getModeIcon(root.activeProfile)
-        size: Theme.iconSize * 0.85
-        color: root.getModeColor(root.activeProfile)
+      Row {
         anchors.centerIn: parent
+        spacing: 4
+        DankIcon {
+          name: root.showBatteryIcon ? "battery_std" : root.getModeIcon(root.activeProfile)
+          size: root.showBatteryIcon ? 18 : Theme.iconSize * 0.85
+          color: root.showBatteryIcon ? Theme.surfaceText : root.getModeColor(root.activeProfile)
+        }
+        StyledText {
+          text: root.batteryLevel + "%"
+          font.pixelSize: Theme.fontSizeSmall
+          color: Theme.surfaceText
+          visible: root.showBatteryIcon
+          anchors.verticalCenter: parent.verticalCenter
+        }
       }
     }
   }
@@ -322,6 +349,28 @@ PluginComponent {
             wrapMode: Text.WordWrap
             horizontalAlignment: Text.AlignHCenter
             visible: true
+          }
+
+          Row {
+            width: parent.width
+            spacing: Theme.spacingS
+            StyledText {
+              text: "Show Battery in Bar"
+              font.pixelSize: Theme.fontSizeMedium
+              color: Theme.surfaceText
+            }
+            Item { width: 1; height: 1; }
+            DankIcon {
+              name: root.showBatteryIcon ? "toggle_on" : "toggle_off"
+              size: 24
+              color: Theme.primary
+              anchors.verticalCenter: parent.verticalCenter
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.showBatteryIcon = !root.showBatteryIcon
+              }
+            }
           }
         }
       }
