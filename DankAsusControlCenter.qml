@@ -369,7 +369,7 @@ PluginComponent {
     popoutContent: Component {
         PopoutComponent {
             id: popup
-            headerText: "ASUS Control"
+            headerText: "Dank ASUS Control"
 
             Item {
                 id: contentWrapper

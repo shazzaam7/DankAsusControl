@@ -1,18 +1,22 @@
-# ASUS Control Center for DankMaterialShell
+# Dank ASUS Control Center for DankMaterialShell
+Continuation of [ASUS Control Center](https://github.com/pseudofractal/AsusControl)
+
 Power & GPU Management for ASUS Laptops.  
 A plugin for [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell)
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/pseudofractal/AsusControl/main/assets/popup.png" alt="Asus Control Center Popup"/>
+  <img src="assets/popup.png" alt="Dank Asus Control Center Popup"/>
 </div>
 
-**Asus Control Center** is a plugin for DankMaterialShell that integrates `asusctl` and `supergfxctl` directly into your desktop interface. It provides a seamless way to manage performance profiles and graphics switching without opening a terminal.
+**Dank Asus Control Center** is a plugin for DankMaterialShell that integrates `asusctl` and `supergfxctl` directly into your desktop interface. It provides a seamless way to interact with `asusctl` & `supergfxctl` without opening your terminal.
 
 ## Features
 
 - **Power Profiles**: Switch between *Quiet*, *Balanced*, and *Performance* modes on the fly.
 - **GPU Switching**: Toggle *Integrated*, *Hybrid*, and *Dedicated* graphics modes.
 - **Auto-Logout**: Automatically detects your session (Hyprland, Niri, Sway, KDE, Gnome, etc.) and performs the required logout when switching GPU modes.
+- **Battery Charge Tray Icon**: Shows current battery charge percentage as a tray icon
+- **Battery Charge Limit/One Shot**: Allows you to change the charge limit for your battery, while One Shot will temporarily remove this limit in order to charge your battery to 100%
 
 ## Requirements
 
@@ -32,7 +36,7 @@ Clone this repository into your DankMaterialShell plugins directory (typically l
 
 ```bash
 cd ~/.config/DankMaterialShell/plugins
-git clone https://github.com/pseudofractal/AsusControl.git
+git clone https://github.com/shazzaam7/DankAsusControl.git
 ```
 
 Once installed, restart DankMaterialShell using `dms restart`.

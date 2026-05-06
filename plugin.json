@@ -1,11 +1,11 @@
 {
-  "id": "asusControlCenter",
-  "name": "ASUS Control Center",
+  "id": "dankAsusControlCenter",
+  "name": "Dank ASUS Control Center",
   "description": "Manage Power Profiles and GPU Modes for ASUS Laptops",
   "version": "2.0.0",
   "author": "Shazzaam",
   "icon": "developer_board",
   "type": "widget",
-  "component": "AsusControlCenter.qml",
+  "component": "DankAsusControlCenter.qml",
   "permissions": ["process"]
 }
