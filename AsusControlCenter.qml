@@ -16,6 +16,7 @@ PluginComponent {
     property var supportedGpuModes: []
     property var supportedPowerProfiles: []
     property int batteryLevel: 0
+    property int batteryLimit: 100
     property bool showBatteryIcon: pluginData.showBatteryIcon || false
     // Debug flags to force missing detection
     property bool debugForceAsusMissing: false
@@ -89,6 +90,33 @@ PluginComponent {
                 if (!isNaN(level)) {
                     root.batteryLevel = level;
                 }
+            }
+        }
+    }
+
+    Process {
+        id: procBatteryLimitGet
+        command: ["asusctl", "battery", "info"]
+        stdout: SplitParser {
+            onRead: line => {
+                var match = line.trim().match(/Current battery charge limit:\s*(\d+)%/);
+                if (match) {
+                    root.batteryLimit = parseInt(match[1]);
+                }
+            }
+        }
+    }
+
+    Process {
+        id: procBatteryLimitSet
+        command: ["asusctl", "battery", "limit", "80"]
+        stderr: SplitParser {
+            onRead: line => ToastService.showError("Battery Limit Error", line)
+        }
+        onExited: code => {
+            if (code === 0) {
+                ToastService.showInfo("Battery", "Charge limit set to " + procBatteryLimitSet.command[3] + "%");
+                procBatteryLimitGet.running = true;
             }
         }
     }
@@ -214,6 +242,7 @@ PluginComponent {
             procPowerGet.running = true;
             procGpuGet.running = true;
             procBatteryGet.running = true;
+            procBatteryLimitGet.running = true;
         }
     }
 
@@ -221,6 +250,7 @@ PluginComponent {
         procGpuList.running = true;
         procProfileList.running = true;
         procBatteryGet.running = true;
+        procBatteryLimitGet.running = true;
         procAsusCtlInfo.running = true;
         procSupergfxCtlInfo.running = true;
     }
@@ -238,6 +268,16 @@ PluginComponent {
             return;
         procGpuSet.command = ["supergfxctl", "-m", mode];
         procGpuSet.running = true;
+    }
+
+    function setBatteryLimit(limit) {
+        if (limit < 20 || limit > 100)
+            return;
+        if (procBatteryLimitSet.running)
+            return;
+        procBatteryLimitSet.command = ["asusctl", "battery", "limit", limit.toString()];
+        procBatteryLimitSet.running = true;
+        root.batteryLimit = limit;
     }
 
     function getModeColor(modeName) {
@@ -389,6 +429,39 @@ PluginComponent {
                                     onClicked: root.setPowerProfile(modelData)
                                 }
                             }
+                        }
+                    }
+
+                    StyledText {
+                        text: "Battery Charge Limit"
+                        font.pixelSize: Theme.fontSizeMedium
+                        font.weight: Font.Bold
+                        color: Theme.surfaceVariantText
+                        visible: !root.asusCtlInfo.includes("MISSING")
+                    }
+                    Row {
+                        width: parent.width
+                        spacing: Theme.spacingS
+                        visible: !root.asusCtlInfo.includes("MISSING")
+
+                        DankSlider {
+                            width: parent.width - 80
+                            value: root.batteryLimit
+                            minimum: 20
+                            maximum: 100
+                            step: 5
+                            unit: "%"
+                            leftIcon: "battery_std"
+                            rightIcon: "battery_charging_full"
+                            onSliderDragFinished: finalValue => root.setBatteryLimit(finalValue)
+                        }
+                        StyledText {
+                            text: root.batteryLimit + "%"
+                            font.pixelSize: Theme.fontSizeMedium
+                            color: Theme.surfaceText
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 50
+                            horizontalAlignment: Text.AlignRight
                         }
                     }
 
