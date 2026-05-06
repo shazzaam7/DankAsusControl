@@ -14,7 +14,7 @@ PluginComponent {
   property var supportedGpuModes: []
   property var supportedPowerProfiles: []
   property int batteryLevel: 0
-  property bool showBatteryIcon: false
+  property bool showBatteryIcon: pluginData.showBatteryIcon || false
 
   readonly property string colorPerf: "#F38BA8"
   readonly property string colorBal: "#CBA6F7"
@@ -368,7 +368,12 @@ PluginComponent {
               MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.showBatteryIcon = !root.showBatteryIcon
+                onClicked: {
+                root.showBatteryIcon = !root.showBatteryIcon
+                if (pluginService) {
+                  pluginService.savePluginData(pluginId, "showBatteryIcon", root.showBatteryIcon)
+                }
+              }
               }
             }
           }
