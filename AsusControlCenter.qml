@@ -122,6 +122,19 @@ PluginComponent {
     }
 
     Process {
+        id: procBatteryOneShot
+        command: ["asusctl", "battery", "oneshot"]
+        stderr: SplitParser {
+            onRead: line => ToastService.showError("Battery One Shot Error", line)
+        }
+        onExited: code => {
+            if (code === 0) {
+                ToastService.showInfo("Battery One Shot", "Temporarily removing charge limit until battery reaches 100%");
+            }
+        }
+    }
+
+    Process {
         id: procPowerSet
         command: ["asusctl", "profile", "set", "Balanced"]
         stderr: SplitParser {
@@ -278,6 +291,12 @@ PluginComponent {
         procBatteryLimitSet.command = ["asusctl", "battery", "limit", limit.toString()];
         procBatteryLimitSet.running = true;
         root.batteryLimit = limit;
+    }
+
+    function triggerOneShot() {
+        if (procBatteryOneShot.running)
+            return;
+        procBatteryOneShot.running = true;
     }
 
     function getModeColor(modeName) {
@@ -462,6 +481,43 @@ PluginComponent {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 50
                             horizontalAlignment: Text.AlignRight
+                        }
+                    }
+                    Row {
+                        width: parent.width
+                        spacing: Theme.spacingS
+                        visible: !root.asusCtlInfo.includes("MISSING")
+
+                        StyledRect {
+                            width: parent.width
+                            height: 36
+                            radius: Theme.cornerRadius
+                            color: Theme.surfaceContainerLow
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: Theme.spacingS
+
+                                DankIcon {
+                                    name: "bolt"
+                                    size: 18
+                                    color: Theme.primary
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                StyledText {
+                                    text: "One Shot"
+                                    font.pixelSize: Theme.fontSizeMedium
+                                    color: Theme.surfaceText
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.triggerOneShot()
+                            }
                         }
                     }
 
