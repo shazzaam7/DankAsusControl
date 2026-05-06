@@ -17,6 +17,7 @@ PluginComponent {
     property var supportedPowerProfiles: []
     property int batteryLevel: 0
     property int batteryLimit: 100
+    property string batteryStatus: "Unknown"
     property bool showBatteryIcon: pluginData.showBatteryIcon || false
     // Debug flags to force missing detection
     property bool debugForceAsusMissing: false
@@ -90,6 +91,16 @@ PluginComponent {
                 if (!isNaN(level)) {
                     root.batteryLevel = level;
                 }
+            }
+        }
+    }
+
+    Process {
+        id: procBatteryStatus
+        command: ["sh", "-c", "cat /sys/class/power_supply/BAT*/status"]
+        stdout: SplitParser {
+            onRead: line => {
+                root.batteryStatus = line.trim();
             }
         }
     }
@@ -255,6 +266,7 @@ PluginComponent {
             procPowerGet.running = true;
             procGpuGet.running = true;
             procBatteryGet.running = true;
+            procBatteryStatus.running = true;
             procBatteryLimitGet.running = true;
         }
     }
@@ -263,6 +275,7 @@ PluginComponent {
         procGpuList.running = true;
         procProfileList.running = true;
         procBatteryGet.running = true;
+        procBatteryStatus.running = true;
         procBatteryLimitGet.running = true;
         procAsusCtlInfo.running = true;
         procSupergfxCtlInfo.running = true;
@@ -355,6 +368,41 @@ PluginComponent {
                     id: mainCol
                     width: parent.width
                     spacing: Theme.spacingM
+
+                    // Information section
+                    StyledText {
+                        text: "Information"
+                        font.pixelSize: Theme.fontSizeMedium
+                        font.weight: Font.Bold
+                        color: Theme.surfaceVariantText
+                    }
+                    Row {
+                        width: parent.width
+                        spacing: Theme.spacingS
+
+                        DankIcon {
+                            name: "info"
+                            size: 20
+                            color: Theme.surfaceText
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        StyledText {
+                            text: "Status: " + root.batteryStatus
+                            font.pixelSize: Theme.fontSizeMedium
+                            color: Theme.surfaceText
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    // Separator
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: Theme.outlineVariant
+                        opacity: 0.5
+                    }
+
                     // UI Settings section
                     StyledText {
                         text: "UI Settings"
