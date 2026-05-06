@@ -296,6 +296,50 @@ PluginComponent {
                     id: mainCol
                     width: parent.width
                     spacing: Theme.spacingM
+                    // UI Settings section
+                    StyledText {
+                        text: "UI Settings"
+                        font.pixelSize: Theme.fontSizeMedium
+                        font.weight: Font.Bold
+                        color: Theme.surfaceVariantText
+                    }
+                    Row {
+                        width: parent.width
+                        spacing: Theme.spacingS
+                        StyledText {
+                            text: "Show Battery in Bar"
+                            font.pixelSize: Theme.fontSizeMedium
+                            color: Theme.surfaceText
+                        }
+                        Item {
+                            width: 1
+                            height: 1
+                        }
+                        DankIcon {
+                            name: root.showBatteryIcon ? "toggle_on" : "toggle_off"
+                            size: 24
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.showBatteryIcon = !root.showBatteryIcon;
+                                    if (pluginService) {
+                                        pluginService.savePluginData(pluginId, "showBatteryIcon", root.showBatteryIcon);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Separator
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: Theme.outlineVariant
+                        opacity: 0.5
+                        visible: !root.supergfxCtlInfo.includes("MISSING")
+                    }
                     StyledText {
                         text: "Power Profile"
                         font.pixelSize: Theme.fontSizeMedium
@@ -353,12 +397,23 @@ PluginComponent {
                         height: 1
                         color: Theme.outlineVariant
                         opacity: 0.5
+                        visible: !root.supergfxCtlInfo.includes("MISSING")
                     }
                     StyledText {
                         text: "GPU Mode"
                         font.pixelSize: Theme.fontSizeMedium
                         font.weight: Font.Bold
                         color: Theme.surfaceVariantText
+                        visible: !root.supergfxCtlInfo.includes("MISSING")
+                    }
+                    // GPU Mode warning
+                    StyledText {
+                        width: parent.width
+                        text: "Switching GPU mode will trigger an immediate logout."
+                        font.pixelSize: Theme.fontSizeMedium
+                        color: Theme.error
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
                         visible: !root.supergfxCtlInfo.includes("MISSING")
                     }
                     Flow {
@@ -401,49 +456,21 @@ PluginComponent {
                             }
                         }
                     }
-
-                    StyledText {
-                        width: parent.width
-                        text: "Switching GPU mode will trigger an immediate logout."
-                        font.pixelSize: Theme.fontSizeMedium
-                        color: Theme.error
-                        wrapMode: Text.WordWrap
-                        horizontalAlignment: Text.AlignHCenter
-                        visible: true
-                    }
-
-                    Row {
-                        width: parent.width
-                        spacing: Theme.spacingS
-                        StyledText {
-                            text: "Show Battery in Bar"
-                            font.pixelSize: Theme.fontSizeMedium
-                            color: Theme.surfaceText
-                        }
-                        Item {
-                            width: 1
-                            height: 1
-                        }
-                        DankIcon {
-                            name: root.showBatteryIcon ? "toggle_on" : "toggle_off"
-                            size: 24
-                            color: Theme.primary
-                            anchors.verticalCenter: parent.verticalCenter
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.showBatteryIcon = !root.showBatteryIcon;
-                                    if (pluginService) {
-                                        pluginService.savePluginData(pluginId, "showBatteryIcon", root.showBatteryIcon);
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
             // Version and installation status
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Theme.outlineVariant
+                opacity: 0.5
+            }
+            // Spacing before version info
+            Rectangle {
+                width: parent.width
+                height: Theme.spacingM
+                color: "transparent"
+            }
             StyledText {
                 width: parent.width
                 // Show each tool version on its own line with a label
