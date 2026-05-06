@@ -10,11 +10,16 @@ PluginComponent {
   id: root
 
   property string activeProfile: "Balanced"
+  property string asusCtlInfo: ""
+  property string supergfxCtlInfo: ""
   property string activeGpuMode: "Unknown"
   property var supportedGpuModes: []
   property var supportedPowerProfiles: []
   property int batteryLevel: 0
   property bool showBatteryIcon: pluginData.showBatteryIcon || false
+  // Debug flags to force missing detection
+  property bool debugForceAsusMissing: false
+  property bool debugForceSupergfxMissing: false
 
   readonly property string colorPerf: "#F38BA8"
   readonly property string colorBal: "#CBA6F7"
@@ -152,6 +157,50 @@ PluginComponent {
     }
   }
 
+  // Check if asusctl is installed and get version
+  Process {
+    id: procAsusCtlInfo
+    command: ["sh", "-c", "asusctl info || echo MISSING"]
+    stdout: SplitParser {
+      onRead: line => {
+          if (root.debugForceAsusMissing) {
+            root.asusCtlInfo = "MISSING"
+            return
+          }
+          var trimmed = line.trim()
+          // Look for the line containing the software version
+          var match = trimmed.match(/Software version:\s*([\d\.]+)/)
+          if (match) {
+            root.asusCtlInfo = match[1]
+          } else if (trimmed === "MISSING") {
+            root.asusCtlInfo = "MISSING"
+          }
+        }
+    }
+  }
+
+  // Check if supergfxctl is installed and get version
+  Process {
+    id: procSupergfxCtlInfo
+    command: ["sh", "-c", "supergfxctl -v || echo MISSING"]
+    stdout: SplitParser {
+      onRead: line => {
+          if (root.debugForceSupergfxMissing) {
+            root.supergfxCtlInfo = "MISSING"
+            return
+          }
+          var trimmed = line.trim()
+          if (trimmed === "MISSING") {
+            root.supergfxCtlInfo = "MISSING"
+          } else {
+            // Expected format: "supergfxctl X.Y.Z"
+            var match = trimmed.match(/([\d]+(?:\.[\d]+)*)/)
+            root.supergfxCtlInfo = match ? match[1] : trimmed
+          }
+        }
+    }
+  }
+
   Timer {
     interval: 3000
     running: true
@@ -168,6 +217,8 @@ PluginComponent {
     procGpuList.running = true
     procProfileList.running = true
     procBatteryGet.running = true
+    procAsusCtlInfo.running = true
+    procSupergfxCtlInfo.running = true
   }
 
   function setPowerProfile(name) {
@@ -235,21 +286,22 @@ PluginComponent {
           id: mainCol
           width: parent.width
           spacing: Theme.spacingM
-
           StyledText {
-            text: "Power Profile"
-            font.pixelSize: Theme.fontSizeMedium
-            font.weight: Font.Bold
-            color: Theme.surfaceVariantText
-          }
+              text: "Power Profile"
+              font.pixelSize: Theme.fontSizeMedium
+              font.weight: Font.Bold
+              color: Theme.surfaceVariantText
+              visible: !root.asusCtlInfo.includes("MISSING")
+            }
+            Row {
+              spacing: Theme.spacingS
+              width: parent.width
+              visible: !root.asusCtlInfo.includes("MISSING")
 
-          Row {
-            spacing: Theme.spacingS
-            width: parent.width
+              Repeater {
+                id: profileRepeater
+                model: root.supportedPowerProfiles.length > 0 ? root.supportedPowerProfiles : ["Quiet", "Balanced", "Performance"]
 
-            Repeater {
-              id: profileRepeater
-              model: root.supportedPowerProfiles.length > 0 ? root.supportedPowerProfiles : ["Quiet", "Balanced", "Performance"]
 
               StyledRect {
                 width: (parent.width - (Theme.spacingS * (profileRepeater.count - 1))) / profileRepeater.count
@@ -293,17 +345,18 @@ PluginComponent {
             color: Theme.outlineVariant
             opacity: 0.5
           }
-
           StyledText {
-            text: "GPU Mode"
-            font.pixelSize: Theme.fontSizeMedium
-            font.weight: Font.Bold
-            color: Theme.surfaceVariantText
-          }
+              text: "GPU Mode"
+              font.pixelSize: Theme.fontSizeMedium
+              font.weight: Font.Bold
+              color: Theme.surfaceVariantText
+              visible: !root.supergfxCtlInfo.includes("MISSING")
+            }
+            Flow {
+              width: parent.width
+              spacing: Theme.spacingS
+              visible: !root.supergfxCtlInfo.includes("MISSING")
 
-          Flow {
-            width: parent.width
-            spacing: Theme.spacingS
 
             Repeater {
               model: root.supportedGpuModes
@@ -379,6 +432,18 @@ PluginComponent {
           }
         }
       }
+      // Version and installation status
+      StyledText {
+          width: parent.width
+          // Show each tool version on its own line with a label
+          text: "asusctl: " + root.asusCtlInfo + "\n" + "supergfxctl: " + root.supergfxCtlInfo
+          font.pixelSize: Theme.fontSizeSmall
+          // If either tool is missing, show error color
+          color: (root.asusCtlInfo.includes("MISSING") || root.supergfxCtlInfo.includes("MISSING")) ? Theme.error : Theme.surfaceText
+          wrapMode: Text.WordWrap
+          horizontalAlignment: Text.AlignRight
+          visible: true
+        }
     }
   }
 }
