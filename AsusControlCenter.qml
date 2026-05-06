@@ -328,6 +328,18 @@ PluginComponent {
         return "balance";
     }
 
+    function getBatteryIcon(status) {
+        if (status === "Charging")
+            return "battery_charging_full";
+        if (status === "Full")
+            return "battery_full";
+        if (status === "Discharging")
+            return "battery_std";
+        if (status === "Not charging")
+            return "battery_0_bar";
+        return "battery_std";
+    }
+
     horizontalBarPill: Component {
         Item {
             implicitWidth: root.showBatteryIcon ? 70 : Theme.iconSize
@@ -336,7 +348,7 @@ PluginComponent {
                 anchors.centerIn: parent
                 spacing: 4
                 DankIcon {
-                    name: root.showBatteryIcon ? "battery_std" : root.getModeIcon(root.activeProfile)
+                    name: root.showBatteryIcon ? root.getBatteryIcon(root.batteryStatus) : root.getModeIcon(root.activeProfile)
                     size: root.showBatteryIcon ? 18 : Theme.iconSize * 0.85
                     color: root.showBatteryIcon ? Theme.surfaceText : root.getModeColor(root.activeProfile)
                 }
