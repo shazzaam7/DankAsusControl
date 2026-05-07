@@ -25,6 +25,7 @@ This plugin requires the following to be installed on your system:
 1.  **[DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell)**: The shell environment.
 2.  **[asusctl](https://gitlab.com/asus-linux/asusctl)**: For power profile management.
 3.  **[supergfxctl](https://gitlab.com/asus-linux/supergfxctl)**: For GPU switching.
+4.  **[upower](https://upower.freedesktop.org/)**: For Battery stats.
 
 > **Note**: Ensure the `supergfxd` service is active and your user has permissions to control it (usually by being part of the `asus-users` group).
 

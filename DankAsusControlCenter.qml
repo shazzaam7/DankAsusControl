@@ -18,10 +18,19 @@ PluginComponent {
     property int batteryLevel: 0
     property int batteryLimit: 100
     property string batteryStatus: "Unknown"
-    property bool showBatteryIcon: pluginData.showBatteryIcon || false
+    property bool showBatteryIconStash: pluginData.showBatteryIcon || false
+    property string upowerInfo: ""
+    readonly property bool showBatteryIcon: showBatteryIconStash && !upowerInfo.includes("MISSING") && upowerInfo.length > 0
+
+    property real batteryEnergy: 0
+    property real batteryEnergyFull: 0
+    property real batteryEnergyDesign: 0
+    property real batteryVoltage: 0
+    property real batteryCapacity: 0
     // Debug flags to force missing detection
     property bool debugForceAsusMissing: false
     property bool debugForceSupergfxMissing: false
+    property bool debugForceUpowerMissing: false
 
     readonly property string colorPerf: "#F38BA8"
     readonly property string colorBal: "#CBA6F7"
@@ -84,23 +93,66 @@ PluginComponent {
 
     Process {
         id: procBatteryGet
-        command: ["sh", "-c", "cat /sys/class/power_supply/*/capacity"]
+        command: ["upower", "-b"]
         stdout: SplitParser {
             onRead: line => {
-                var level = parseInt(line.trim());
-                if (!isNaN(level)) {
-                    root.batteryLevel = level;
+                var trimmed = line.trim();
+
+                var match = trimmed.match(/percentage:\s*(\d+)%/);
+                if (match) {
+                    root.batteryLevel = parseInt(match[1]);
+                }
+
+                match = trimmed.match(/state:\s*(\w+(?:-\w+)?)/);
+                if (match) {
+                    root.batteryStatus = match[1];
+                }
+
+                match = trimmed.match(/energy:\s*([\d,]+)\s*Wh/);
+                if (match) {
+                    root.batteryEnergy = parseFloat(match[1].replace(",", "."));
+                }
+
+                match = trimmed.match(/energy-full:\s*([\d,]+)\s*Wh/);
+                if (match) {
+                    root.batteryEnergyFull = parseFloat(match[1].replace(",", "."));
+                }
+
+                match = trimmed.match(/energy-full-design:\s*([\d,]+)\s*Wh/);
+                if (match) {
+                    root.batteryEnergyDesign = parseFloat(match[1].replace(",", "."));
+                }
+
+                match = trimmed.match(/voltage:\s*([\d,]+)\s*V/);
+                if (match) {
+                    root.batteryVoltage = parseFloat(match[1].replace(",", "."));
+                }
+
+                match = trimmed.match(/capacity:\s*([\d,]+)%/);
+                if (match) {
+                    root.batteryCapacity = parseFloat(match[1].replace(",", "."));
                 }
             }
         }
     }
 
+    // Check if upower is installed and get version
     Process {
-        id: procBatteryStatus
-        command: ["sh", "-c", "cat /sys/class/power_supply/BAT*/status"]
+        id: procUpowerInfo
+        command: ["sh", "-c", "upower -v 2>&1 | head -1 || echo MISSING"]
         stdout: SplitParser {
             onRead: line => {
-                root.batteryStatus = line.trim();
+                if (root.debugForceUpowerMissing) {
+                    root.upowerInfo = "MISSING";
+                    return;
+                }
+                var trimmed = line.trim();
+                if (trimmed === "MISSING") {
+                    root.upowerInfo = "MISSING";
+                } else {
+                    var match = trimmed.match(/^UPower client version\s*([\d.]+)/);
+                    root.upowerInfo = match ? match[1] : trimmed;
+                }
             }
         }
     }
@@ -266,7 +318,6 @@ PluginComponent {
             procPowerGet.running = true;
             procGpuGet.running = true;
             procBatteryGet.running = true;
-            procBatteryStatus.running = true;
             procBatteryLimitGet.running = true;
         }
     }
@@ -275,10 +326,10 @@ PluginComponent {
         procGpuList.running = true;
         procProfileList.running = true;
         procBatteryGet.running = true;
-        procBatteryStatus.running = true;
         procBatteryLimitGet.running = true;
         procAsusCtlInfo.running = true;
         procSupergfxCtlInfo.running = true;
+        procUpowerInfo.running = true;
     }
 
     function setPowerProfile(name) {
@@ -328,15 +379,21 @@ PluginComponent {
         return "balance";
     }
 
+    function getBatteryStatusFormatted(status) {
+        if (status === "Unknown")
+            return status;
+        return status.charAt(0).toUpperCase() + status.slice(1).replace(/-/g, " ");
+    }
+
     function getBatteryIcon(status) {
-        if (status === "Charging")
+        if (status === "charging" || status === "pending-charge")
             return "battery_charging_full";
-        if (status === "Full")
+        if (status === "fully-charged")
             return "battery_full";
-        if (status === "Discharging")
+        if (status === "discharging" || status === "pending-discharge")
             return "battery_std";
-        if (status === "Not charging")
-            return "battery_0_bar";
+        if (status === "empty")
+            return "battery_alert";
         return "battery_std";
     }
 
@@ -387,10 +444,12 @@ PluginComponent {
                         font.pixelSize: Theme.fontSizeMedium
                         font.weight: Font.Bold
                         color: Theme.surfaceVariantText
+                        visible: !root.upowerInfo.includes("MISSING")
                     }
                     Row {
                         width: parent.width
                         spacing: Theme.spacingS
+                        visible: !root.upowerInfo.includes("MISSING")
 
                         DankIcon {
                             name: "info"
@@ -400,10 +459,100 @@ PluginComponent {
                         }
 
                         StyledText {
-                            text: "Status: " + root.batteryStatus
+                            text: "Status: " + root.getBatteryStatusFormatted(root.batteryStatus)
                             font.pixelSize: Theme.fontSizeMedium
                             color: Theme.surfaceText
                             anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                    Row {
+                        width: parent.width
+                        spacing: Theme.spacingM
+                        visible: !root.upowerInfo.includes("MISSING")
+
+                        Column {
+                            spacing: 2
+                            StyledText {
+                                text: "Percentage"
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                            }
+                            StyledText {
+                                text: root.batteryLevel + "%"
+                                font.pixelSize: Theme.fontSizeMedium
+                                color: Theme.surfaceText
+                            }
+                        }
+                        Column {
+                            spacing: 2
+                            StyledText {
+                                text: "Capacity"
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                            }
+                            StyledText {
+                                text: Math.round(root.batteryCapacity) + "%"
+                                font.pixelSize: Theme.fontSizeMedium
+                                color: Theme.surfaceText
+                            }
+                        }
+                        Column {
+                            spacing: 2
+                            StyledText {
+                                text: "Voltage"
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                            }
+                            StyledText {
+                                text: root.batteryVoltage.toFixed(2) + " V"
+                                font.pixelSize: Theme.fontSizeMedium
+                                color: Theme.surfaceText
+                            }
+                        }
+                    }
+                    Row {
+                        width: parent.width
+                        spacing: Theme.spacingM
+                        visible: !root.upowerInfo.includes("MISSING") && root.batteryEnergy > 0
+
+                        Column {
+                            spacing: 2
+                            StyledText {
+                                text: "Current"
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                            }
+                            StyledText {
+                                text: root.batteryEnergy.toFixed(1) + " Wh"
+                                font.pixelSize: Theme.fontSizeMedium
+                                color: Theme.surfaceText
+                            }
+                        }
+                        Column {
+                            spacing: 2
+                            StyledText {
+                                text: "Full"
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                            }
+                            StyledText {
+                                text: root.batteryEnergyFull.toFixed(1) + " Wh"
+                                font.pixelSize: Theme.fontSizeMedium
+                                color: Theme.surfaceText
+                            }
+                        }
+                        Column {
+                            spacing: 2
+                            StyledText {
+                                text: "Design"
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                            }
+                            StyledText {
+                                text: root.batteryEnergyDesign.toFixed(1) + " Wh"
+                                font.pixelSize: Theme.fontSizeMedium
+                                color: Theme.surfaceText
+                            }
                         }
                     }
 
@@ -413,6 +562,7 @@ PluginComponent {
                         height: 1
                         color: Theme.outlineVariant
                         opacity: 0.5
+                        visible: !root.upowerInfo.includes("MISSING") || !root.supergfxCtlInfo.includes("MISSING")
                     }
 
                     // UI Settings section
@@ -425,6 +575,7 @@ PluginComponent {
                     Row {
                         width: parent.width
                         spacing: Theme.spacingS
+                        visible: !root.upowerInfo.includes("MISSING")
                         StyledText {
                             text: "Show Battery in Bar"
                             font.pixelSize: Theme.fontSizeMedium
@@ -435,7 +586,7 @@ PluginComponent {
                             height: 1
                         }
                         DankIcon {
-                            name: root.showBatteryIcon ? "toggle_on" : "toggle_off"
+                            name: root.showBatteryIconStash ? "toggle_on" : "toggle_off"
                             size: 24
                             color: Theme.primary
                             anchors.verticalCenter: parent.verticalCenter
@@ -443,9 +594,9 @@ PluginComponent {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    root.showBatteryIcon = !root.showBatteryIcon;
+                                    root.showBatteryIconStash = !root.showBatteryIconStash;
                                     if (pluginService) {
-                                        pluginService.savePluginData(pluginId, "showBatteryIcon", root.showBatteryIcon);
+                                        pluginService.savePluginData(pluginId, "showBatteryIcon", root.showBatteryIconStash);
                                     }
                                 }
                             }
@@ -663,10 +814,10 @@ PluginComponent {
             StyledText {
                 width: parent.width
                 // Show each tool version on its own line with a label
-                text: "asusctl: " + root.asusCtlInfo + "\n" + "supergfxctl: " + root.supergfxCtlInfo
+                text: "asusctl: " + root.asusCtlInfo + "\n" + "supergfxctl: " + root.supergfxCtlInfo + "\n" + "upower: " + root.upowerInfo
                 font.pixelSize: Theme.fontSizeSmall
-                // If either tool is missing, show error color
-                color: (root.asusCtlInfo.includes("MISSING") || root.supergfxCtlInfo.includes("MISSING")) ? Theme.error : Theme.surfaceText
+                // If any tool is missing, show error color
+                color: (root.asusCtlInfo.includes("MISSING") && root.supergfxCtlInfo.includes("MISSING") && root.upowerInfo.includes("MISSING")) ? Theme.error : Theme.surfaceText
                 wrapMode: Text.WordWrap
                 horizontalAlignment: Text.AlignRight
                 visible: true
