@@ -27,6 +27,7 @@ PluginComponent {
     property real batteryEnergyDesign: 0
     property real batteryVoltage: 0
     property real batteryCapacity: 0
+    property bool panelOverdriveStash: pluginData.panelOverdrive || false
     // Debug flags to force missing detection
     property bool debugForceAsusMissing: false
     property bool debugForceSupergfxMissing: false
@@ -265,6 +266,36 @@ PluginComponent {
         }
     }
 
+    Process {
+        id: procPanelOverdriveGet
+        command: ["asusctl", "armoury", "get", "panel_overdrive"]
+        stdout: SplitParser {
+            onRead: line => {
+                var match = line.trim().match(/current:.*\(\s*(\d+)\s*\)/);
+                if (match) {
+                    root.panelOverdriveStash = parseInt(match[1]) === 1;
+                    if (pluginService) {
+                        pluginService.savePluginData(pluginId, "panelOverdrive", root.panelOverdriveStash);
+                    }
+                }
+            }
+        }
+    }
+
+    Process {
+        id: procPanelOverdriveSet
+        command: ["asusctl", "armoury", "set", "panel_overdrive", "0"]
+        stderr: SplitParser {
+            onRead: line => ToastService.showError("Panel Overdrive Error", line)
+        }
+        onExited: code => {
+            if (code === 0) {
+                ToastService.showInfo("Display", "Panel overdrive " + (root.panelOverdriveStash ? "enabled" : "disabled"));
+                procPanelOverdriveGet.running = true;
+            }
+        }
+    }
+
     // Check if asusctl is installed and get version
     Process {
         id: procAsusCtlInfo
@@ -319,6 +350,7 @@ PluginComponent {
             procGpuGet.running = true;
             procBatteryGet.running = true;
             procBatteryLimitGet.running = true;
+            procPanelOverdriveGet.running = true;
         }
     }
 
@@ -330,6 +362,7 @@ PluginComponent {
         procAsusCtlInfo.running = true;
         procSupergfxCtlInfo.running = true;
         procUpowerInfo.running = true;
+        procPanelOverdriveGet.running = true;
     }
 
     function setPowerProfile(name) {
@@ -361,6 +394,14 @@ PluginComponent {
         if (procBatteryOneShot.running)
             return;
         procBatteryOneShot.running = true;
+    }
+
+    function togglePanelOverdrive() {
+        if (procPanelOverdriveSet.running)
+            return;
+        root.panelOverdriveStash = !root.panelOverdriveStash;
+        procPanelOverdriveSet.command = ["asusctl", "armoury", "set", "panel_overdrive", root.panelOverdriveStash ? "1" : "0"];
+        procPanelOverdriveSet.running = true;
     }
 
     function getModeColor(modeName) {
@@ -728,6 +769,49 @@ PluginComponent {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: root.triggerOneShot()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: Theme.outlineVariant
+                        opacity: 0.5
+                        visible: !root.asusCtlInfo.includes("MISSING")
+                    }
+
+                    StyledText {
+                        text: "Display"
+                        font.pixelSize: Theme.fontSizeMedium
+                        font.weight: Font.Bold
+                        color: Theme.surfaceVariantText
+                        visible: !root.asusCtlInfo.includes("MISSING")
+                    }
+                    Row {
+                        width: parent.width
+                        spacing: Theme.spacingS
+                        visible: !root.asusCtlInfo.includes("MISSING")
+
+                        StyledText {
+                            text: "Panel Overdrive"
+                            font.pixelSize: Theme.fontSizeMedium
+                            color: Theme.surfaceText
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Item {
+                            width: 1
+                            height: 1
+                        }
+                        DankIcon {
+                            name: root.panelOverdriveStash ? "toggle_on" : "toggle_off"
+                            size: 24
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.togglePanelOverdrive()
                             }
                         }
                     }
