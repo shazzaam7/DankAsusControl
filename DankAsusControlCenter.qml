@@ -29,6 +29,10 @@ PluginComponent {
     property real batteryCapacity: 0
     property bool panelOverdriveStash: pluginData.panelOverdrive || false
     property bool screenAutoBrightnessStash: pluginData.screenAutoBrightness || false
+    property bool panelOverdriveAvailable: false
+    property bool screenAutoBrightnessAvailable: false
+    property bool panelOverdriveMatched: false
+    property bool screenAutoBrightnessMatched: false
     // Debug flags to force missing detection
     property bool debugForceAsusMissing: false
     property bool debugForceSupergfxMissing: false
@@ -371,6 +375,29 @@ PluginComponent {
         }
     }
 
+    Process {
+        id: procArmouryList
+        command: ["asusctl", "armoury", "list"]
+        onRunningChanged: {
+            if (!running) {
+                root.panelOverdriveAvailable = root.panelOverdriveMatched;
+                root.screenAutoBrightnessAvailable = root.screenAutoBrightnessMatched;
+            }
+        }
+        stdout: SplitParser {
+            onRead: line => {
+                var trimmed = line.trim();
+                var name = trimmed.split(':')[0].trim();
+                if (name === "panel_overdrive") {
+                    root.panelOverdriveMatched = true;
+                }
+                if (name === "screen_auto_brightness") {
+                    root.screenAutoBrightnessMatched = true;
+                }
+            }
+        }
+    }
+
     Timer {
         interval: 3000
         running: true
@@ -396,6 +423,7 @@ PluginComponent {
         procUpowerInfo.running = true;
         procPanelOverdriveGet.running = true;
         procScreenAutoBrightnessGet.running = true;
+        procArmouryList.running = true;
     }
 
     function setPowerProfile(name) {
@@ -819,7 +847,7 @@ PluginComponent {
                         height: 1
                         color: Theme.outlineVariant
                         opacity: 0.5
-                        visible: !root.asusCtlInfo.includes("MISSING")
+                        visible: !root.supergfxCtlInfo.includes("MISSING") || (!root.asusCtlInfo.includes("MISSING") && (root.panelOverdriveAvailable || root.screenAutoBrightnessAvailable))
                     }
 
                     StyledText {
@@ -827,12 +855,12 @@ PluginComponent {
                         font.pixelSize: Theme.fontSizeMedium
                         font.weight: Font.Bold
                         color: Theme.surfaceVariantText
-                        visible: !root.asusCtlInfo.includes("MISSING")
+                        visible: !root.asusCtlInfo.includes("MISSING") && (root.panelOverdriveAvailable || root.screenAutoBrightnessAvailable)
                     }
                     Row {
                         width: parent.width
                         spacing: Theme.spacingS
-                        visible: !root.asusCtlInfo.includes("MISSING")
+                        visible: !root.asusCtlInfo.includes("MISSING") && root.panelOverdriveAvailable
 
                         StyledText {
                             text: "Panel Overdrive"
@@ -859,7 +887,7 @@ PluginComponent {
                     Row {
                         width: parent.width
                         spacing: Theme.spacingS
-                        visible: !root.asusCtlInfo.includes("MISSING")
+                        visible: !root.asusCtlInfo.includes("MISSING") && root.screenAutoBrightnessAvailable
 
                         StyledText {
                             text: "Screen Auto Brightness"
