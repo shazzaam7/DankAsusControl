@@ -28,6 +28,7 @@ PluginComponent {
     property real batteryVoltage: 0
     property real batteryCapacity: 0
     property bool panelOverdriveStash: pluginData.panelOverdrive || false
+    property bool screenAutoBrightnessStash: pluginData.screenAutoBrightness || false
     // Debug flags to force missing detection
     property bool debugForceAsusMissing: false
     property bool debugForceSupergfxMissing: false
@@ -296,6 +297,36 @@ PluginComponent {
         }
     }
 
+    Process {
+        id: procScreenAutoBrightnessGet
+        command: ["asusctl", "armoury", "get", "screen_auto_brightness"]
+        stdout: SplitParser {
+            onRead: line => {
+                var match = line.trim().match(/current:.*\(\s*(\d+)\s*\)/);
+                if (match) {
+                    root.screenAutoBrightnessStash = parseInt(match[1]) === 1;
+                    if (pluginService) {
+                        pluginService.savePluginData(pluginId, "screenAutoBrightness", root.screenAutoBrightnessStash);
+                    }
+                }
+            }
+        }
+    }
+
+    Process {
+        id: procScreenAutoBrightnessSet
+        command: ["asusctl", "armoury", "set", "screen_auto_brightness", "0"]
+        stderr: SplitParser {
+            onRead: line => ToastService.showError("Screen Auto Brightness Error", line)
+        }
+        onExited: code => {
+            if (code === 0) {
+                ToastService.showInfo("Display", "Screen auto brightness " + (root.screenAutoBrightnessStash ? "enabled" : "disabled"));
+                procScreenAutoBrightnessGet.running = true;
+            }
+        }
+    }
+
     // Check if asusctl is installed and get version
     Process {
         id: procAsusCtlInfo
@@ -351,6 +382,7 @@ PluginComponent {
             procBatteryGet.running = true;
             procBatteryLimitGet.running = true;
             procPanelOverdriveGet.running = true;
+            procScreenAutoBrightnessGet.running = true;
         }
     }
 
@@ -363,6 +395,7 @@ PluginComponent {
         procSupergfxCtlInfo.running = true;
         procUpowerInfo.running = true;
         procPanelOverdriveGet.running = true;
+        procScreenAutoBrightnessGet.running = true;
     }
 
     function setPowerProfile(name) {
@@ -402,6 +435,14 @@ PluginComponent {
         root.panelOverdriveStash = !root.panelOverdriveStash;
         procPanelOverdriveSet.command = ["asusctl", "armoury", "set", "panel_overdrive", root.panelOverdriveStash ? "1" : "0"];
         procPanelOverdriveSet.running = true;
+    }
+
+    function toggleScreenAutoBrightness() {
+        if (procScreenAutoBrightnessSet.running)
+            return;
+        root.screenAutoBrightnessStash = !root.screenAutoBrightnessStash;
+        procScreenAutoBrightnessSet.command = ["asusctl", "armoury", "set", "screen_auto_brightness", root.screenAutoBrightnessStash ? "1" : "0"];
+        procScreenAutoBrightnessSet.running = true;
     }
 
     function getModeColor(modeName) {
@@ -812,6 +853,33 @@ PluginComponent {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: root.togglePanelOverdrive()
+                            }
+                        }
+                    }
+                    Row {
+                        width: parent.width
+                        spacing: Theme.spacingS
+                        visible: !root.asusCtlInfo.includes("MISSING")
+
+                        StyledText {
+                            text: "Screen Auto Brightness"
+                            font.pixelSize: Theme.fontSizeMedium
+                            color: Theme.surfaceText
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Item {
+                            width: 1
+                            height: 1
+                        }
+                        DankIcon {
+                            name: root.screenAutoBrightnessStash ? "toggle_on" : "toggle_off"
+                            size: 24
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.toggleScreenAutoBrightness()
                             }
                         }
                     }
