@@ -69,6 +69,11 @@ PluginComponent {
     Process {
         id: procGpuList
         command: ["supergfxctl", "-s"]
+        onRunningChanged: {
+            if (!running) {
+                root.supportedGpuModes = root.supportedGpuModes.filter(p => p.length > 0);
+            }
+        }
         stdout: SplitParser {
             onRead: line => {
                 var clean = line.replace(/[\[\]']/g, "").trim();
@@ -537,6 +542,21 @@ PluginComponent {
         PopoutComponent {
             id: popup
             headerText: "Dank ASUS Control"
+
+            function onOpened() {
+                procPowerGet.running = true;
+                procGpuGet.running = true;
+                procGpuList.running = true;
+                procProfileList.running = true;
+                procBatteryGet.running = true;
+                procBatteryLimitGet.running = true;
+                procAsusCtlInfo.running = true;
+                procSupergfxCtlInfo.running = true;
+                procUpowerInfo.running = true;
+                procPanelOverdriveGet.running = true;
+                procScreenAutoBrightnessGet.running = true;
+                procArmouryList.running = true;
+            }
 
             Item {
                 id: contentWrapper
