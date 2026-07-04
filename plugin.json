@@ -7,5 +7,6 @@
   "icon": "developer_board",
   "type": "widget",
   "component": "DankAsusControlCenter.qml",
-  "permissions": ["process"]
+  "settings": "DankAsusControlCenterSettings.qml",
+  "permissions": ["process", "settings_read", "settings_write"]
 }

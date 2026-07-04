@@ -38,10 +38,10 @@ PluginComponent {
     property bool debugForceSupergfxMissing: false
     property bool debugForceUpowerMissing: false
 
-    readonly property string colorPerf: "#F38BA8"
-    readonly property string colorBal: "#CBA6F7"
-    readonly property string colorQuiet: "#94E2D5"
-    readonly property string colorGpu: "#89B4FA"
+    readonly property color colorPerf: pluginData.useThemeColors !== false ? Theme[pluginData.colorPerfRole || "primary"] : (pluginData.colorPerf || "#F38BA8")
+    readonly property color colorBal: pluginData.useThemeColors !== false ? Theme[pluginData.colorBalRole || "primary"] : (pluginData.colorBal || "#CBA6F7")
+    readonly property color colorQuiet: pluginData.useThemeColors !== false ? Theme[pluginData.colorQuietRole || "primary"] : (pluginData.colorQuiet || "#94E2D5")
+    readonly property color colorGpu: pluginData.useThemeColors !== false ? Theme[pluginData.colorGpuRole || "primary"] : (pluginData.colorGpu || "#89B4FA")
 
     Process {
         id: procPowerGet
@@ -695,51 +695,7 @@ PluginComponent {
                         visible: !root.upowerInfo.includes("MISSING") || !root.supergfxCtlInfo.includes("MISSING")
                     }
 
-                    // UI Settings section
-                    StyledText {
-                        text: "UI Settings"
-                        font.pixelSize: Theme.fontSizeMedium
-                        font.weight: Font.Bold
-                        color: Theme.surfaceVariantText
-                    }
-                    Row {
-                        width: parent.width
-                        spacing: Theme.spacingS
-                        visible: !root.upowerInfo.includes("MISSING")
-                        StyledText {
-                            text: "Show Battery in Bar"
-                            font.pixelSize: Theme.fontSizeMedium
-                            color: Theme.surfaceText
-                        }
-                        Item {
-                            width: 1
-                            height: 1
-                        }
-                        DankIcon {
-                            name: root.showBatteryIconStash ? "toggle_on" : "toggle_off"
-                            size: 24
-                            color: Theme.primary
-                            anchors.verticalCenter: parent.verticalCenter
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.showBatteryIconStash = !root.showBatteryIconStash;
-                                    if (pluginService) {
-                                        pluginService.savePluginData(pluginId, "showBatteryIcon", root.showBatteryIconStash);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // Separator
-                    Rectangle {
-                        width: parent.width
-                        height: 1
-                        color: Theme.outlineVariant
-                        opacity: 0.5
-                        visible: !root.supergfxCtlInfo.includes("MISSING")
-                    }
+
                     StyledText {
                         text: "Power Profile"
                         font.pixelSize: Theme.fontSizeMedium
