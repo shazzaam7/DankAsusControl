@@ -2,7 +2,7 @@
   "id": "dankAsusControlCenter",
   "name": "Dank ASUS Control Center",
   "description": "Manage Power Profiles and GPU Modes for ASUS Laptops",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "author": "Shazzaam",
   "icon": "developer_board",
   "type": "widget",

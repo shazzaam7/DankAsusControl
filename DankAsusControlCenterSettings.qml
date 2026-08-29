@@ -33,6 +33,10 @@ PluginSettings {
         function loadValue() {
             for (var i = 0; i < uiGroup.children.length; i++) {
                 var row = uiGroup.children[i];
+                if (row.loadValue) {
+                    row.loadValue();
+                    continue;
+                }
                 for (var j = 0; j < row.children.length; j++) {
                     if (row.children[j].loadValue) row.children[j].loadValue();
                 }
@@ -48,15 +52,52 @@ PluginSettings {
             Row {
                 width: parent.width
                 spacing: Theme.spacingM
-                DankIcon { name: "visibility"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                DankIcon { name: "rocket_launch"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                 ToggleSetting {
-                    id: showBatteryToggle
                     width: parent.width - 22 - Theme.spacingM
-                    settingKey: "showBatteryIcon"
-                    label: "Show Battery in Bar"
-                    description: "Display battery percentage next to the widget icon in the bar"
+                    settingKey: "showProfileIcon"
+                    label: "Show Power Profile Icon"
+                    description: "Right-click this icon to cycle the power profile"
+                    defaultValue: true
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: Theme.spacingM
+                DankIcon { name: "bolt"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                ToggleSetting {
+                    width: parent.width - 22 - Theme.spacingM
+                    settingKey: "showBattery"
+                    label: "Show Battery / Power Draw"
+                    description: "Display battery percentage or power draw in the bar. Right-click the icon to switch between the two"
                     defaultValue: false
                 }
+            }
+
+            Row {
+                width: parent.width
+                spacing: Theme.spacingM
+                DankIcon { name: "list_alt"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                ToggleSetting {
+                    width: parent.width - 22 - Theme.spacingM
+                    settingKey: "showDetailedBattery"
+                    label: "Show Detailed Battery Info"
+                    description: "Show Capacity, Voltage and Energy details in the battery popout"
+                    defaultValue: false
+                }
+            }
+
+            SliderSetting {
+                width: parent.width
+                settingKey: "pollingInterval"
+                label: "Refresh Interval"
+                description: "How often to poll asusctl/supergfxctl/upower for status updates (higher = less overhead)"
+                defaultValue: 3
+                minimum: 2
+                maximum: 30
+                unit: "s"
+                leftIcon: "schedule"
             }
         }
     }
