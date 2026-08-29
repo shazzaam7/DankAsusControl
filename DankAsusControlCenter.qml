@@ -18,15 +18,21 @@ PluginComponent {
     property int batteryLevel: 0
     property int batteryLimit: 100
     property string batteryStatus: "Unknown"
-    property bool showBatteryIconStash: pluginData.showBatteryIcon || false
+    property bool showBatteryStash: pluginData.showBattery || false
     property string upowerInfo: ""
-    readonly property bool showBatteryIcon: showBatteryIconStash && !upowerInfo.includes("MISSING") && upowerInfo.length > 0
+    readonly property bool showBattery: showBatteryStash && !upowerInfo.includes("MISSING") && upowerInfo.length > 0
+    readonly property bool showProfileIcon: pluginData.showProfileIcon !== false
+    property bool showDetailedBattery: pluginData.showDetailedBattery || false
+    property string batteryDisplayMode: pluginData.batteryDisplayMode || "battery"
 
     property real batteryEnergy: 0
     property real batteryEnergyFull: 0
     property real batteryEnergyDesign: 0
     property real batteryVoltage: 0
     property real batteryCapacity: 0
+    property real batteryPowerRate: 0
+    property int pollingIntervalStash: pluginData.pollingInterval || 3
+    readonly property int pollingInterval: Math.max(1, pollingIntervalStash) * 1000
     property bool panelOverdriveStash: pluginData.panelOverdrive || false
     property bool screenAutoBrightnessStash: pluginData.screenAutoBrightness || false
     property bool panelOverdriveAvailable: false
@@ -119,27 +125,32 @@ PluginComponent {
                     root.batteryStatus = match[1];
                 }
 
-                match = trimmed.match(/energy:\s*([\d,]+)\s*Wh/);
+                match = trimmed.match(/energy:\s*([\d.,]+)\s*Wh/);
                 if (match) {
                     root.batteryEnergy = parseFloat(match[1].replace(",", "."));
                 }
 
-                match = trimmed.match(/energy-full:\s*([\d,]+)\s*Wh/);
+                match = trimmed.match(/energy-full:\s*([\d.,]+)\s*Wh/);
                 if (match) {
                     root.batteryEnergyFull = parseFloat(match[1].replace(",", "."));
                 }
 
-                match = trimmed.match(/energy-full-design:\s*([\d,]+)\s*Wh/);
+                match = trimmed.match(/energy-full-design:\s*([\d.,]+)\s*Wh/);
                 if (match) {
                     root.batteryEnergyDesign = parseFloat(match[1].replace(",", "."));
                 }
 
-                match = trimmed.match(/voltage:\s*([\d,]+)\s*V/);
+                match = trimmed.match(/energy-rate:\s*([\d.,]+)\s*W/);
+                if (match) {
+                    root.batteryPowerRate = parseFloat(match[1].replace(",", "."));
+                }
+
+                match = trimmed.match(/voltage:\s*([\d.,]+)\s*V/);
                 if (match) {
                     root.batteryVoltage = parseFloat(match[1].replace(",", "."));
                 }
 
-                match = trimmed.match(/capacity:\s*([\d,]+)%/);
+                match = trimmed.match(/capacity:\s*([\d.,]+)%/);
                 if (match) {
                     root.batteryCapacity = parseFloat(match[1].replace(",", "."));
                 }
@@ -404,7 +415,7 @@ PluginComponent {
     }
 
     Timer {
-        interval: 3000
+        interval: root.pollingInterval
         running: true
         repeat: true
         triggeredOnStart: true
@@ -514,22 +525,88 @@ PluginComponent {
 
     horizontalBarPill: Component {
         Item {
-            implicitWidth: root.showBatteryIcon ? 70 : Theme.iconSize
+            implicitWidth: contentRow.implicitWidth
             implicitHeight: Theme.iconSize
             Row {
+                id: contentRow
                 anchors.centerIn: parent
                 spacing: 4
-                DankIcon {
-                    name: root.showBatteryIcon ? root.getBatteryIcon(root.batteryStatus) : root.getModeIcon(root.activeProfile)
-                    size: root.showBatteryIcon ? 18 : Theme.iconSize * 0.85
-                    color: root.showBatteryIcon ? Theme.surfaceText : root.getModeColor(root.activeProfile)
+
+                Item {
+                    width: profileIcon.width
+                    height: Theme.iconSize
+                    visible: root.showProfileIcon
+
+                    DankIcon {
+                        id: profileIcon
+                        name: root.getModeIcon(root.activeProfile)
+                        size: Theme.iconSize * 0.85
+                        color: root.getModeColor(root.activeProfile)
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.RightButton
+                        onClicked: {
+                            var profiles = root.supportedPowerProfiles.length > 0 ? root.supportedPowerProfiles : ["Quiet", "Balanced", "Performance"];
+                            var idx = profiles.indexOf(root.activeProfile);
+                            var next = profiles[(idx + 1) % profiles.length];
+                            root.setPowerProfile(next);
+                        }
+                    }
                 }
-                StyledText {
-                    text: root.batteryLevel + "%"
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.surfaceText
-                    visible: root.showBatteryIcon
-                    anchors.verticalCenter: parent.verticalCenter
+
+                Item {
+                    width: batteryGroup.implicitWidth
+                    height: Theme.iconSize
+                    visible: root.showBattery
+
+                    Row {
+                        id: batteryGroup
+                        spacing: 4
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        DankIcon {
+                            visible: root.batteryDisplayMode === "battery"
+                            name: root.getBatteryIcon(root.batteryStatus)
+                            size: 18
+                            color: Theme.surfaceText
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        StyledText {
+                            text: root.batteryLevel + "%"
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceText
+                            visible: root.batteryDisplayMode === "battery"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        DankIcon {
+                            visible: root.batteryDisplayMode === "power"
+                            name: "bolt"
+                            size: 18
+                            color: Theme.surfaceText
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        StyledText {
+                            text: root.batteryPowerRate.toFixed(1) + "W"
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceText
+                            visible: root.batteryDisplayMode === "power"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.RightButton
+                        onClicked: {
+                            root.pluginService.savePluginData(root.pluginId, "batteryDisplayMode", root.batteryDisplayMode === "battery" ? "power" : "battery");
+                        }
+                    }
                 }
             }
         }
@@ -595,7 +672,7 @@ PluginComponent {
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
-                    Row {
+                    Flow {
                         width: parent.width
                         spacing: Theme.spacingM
                         visible: !root.upowerInfo.includes("MISSING")
@@ -615,6 +692,7 @@ PluginComponent {
                         }
                         Column {
                             spacing: 2
+                            visible: root.showDetailedBattery
                             StyledText {
                                 text: "Capacity"
                                 font.pixelSize: Theme.fontSizeSmall
@@ -628,6 +706,7 @@ PluginComponent {
                         }
                         Column {
                             spacing: 2
+                            visible: root.showDetailedBattery
                             StyledText {
                                 text: "Voltage"
                                 font.pixelSize: Theme.fontSizeSmall
@@ -639,11 +718,25 @@ PluginComponent {
                                 color: Theme.surfaceText
                             }
                         }
+                        Column {
+                            spacing: 2
+                            visible: root.showBattery
+                            StyledText {
+                                text: "Power Draw"
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                            }
+                            StyledText {
+                                text: root.batteryPowerRate.toFixed(2) + " W"
+                                font.pixelSize: Theme.fontSizeMedium
+                                color: Theme.surfaceText
+                            }
+                        }
                     }
                     Row {
                         width: parent.width
                         spacing: Theme.spacingM
-                        visible: !root.upowerInfo.includes("MISSING") && root.batteryEnergy > 0
+                        visible: !root.upowerInfo.includes("MISSING") && root.batteryEnergy > 0 && root.showDetailedBattery
 
                         Column {
                             spacing: 2
@@ -912,7 +1005,7 @@ PluginComponent {
                         horizontalAlignment: Text.AlignHCenter
                         visible: !root.supergfxCtlInfo.includes("MISSING")
                     }
-                    Flow {
+                    Row {
                         width: parent.width
                         spacing: Theme.spacingS
                         visible: !root.supergfxCtlInfo.includes("MISSING")
@@ -921,26 +1014,28 @@ PluginComponent {
                             model: root.supportedGpuModes
 
                             StyledRect {
-                                width: (mainCol.width / 2) - Theme.spacingS
-                                height: 45
+                                width: (parent.width - Theme.spacingS * (root.supportedGpuModes.length - 1)) / Math.max(1, root.supportedGpuModes.length)
+                                height: 70
                                 radius: Theme.cornerRadius
 
                                 color: root.activeGpuMode === modelData ? root.colorGpu : Theme.surfaceContainerLow
 
-                                Row {
+                                Column {
                                     anchors.centerIn: parent
-                                    spacing: Theme.spacingS
+                                    spacing: 4
 
                                     DankIcon {
                                         name: "memory"
-                                        size: 18
+                                        size: 20
                                         color: root.activeGpuMode === modelData ? Theme.base : Theme.surfaceText
+                                        anchors.horizontalCenter: parent.horizontalCenter
                                     }
 
                                     StyledText {
                                         text: modelData
                                         color: root.activeGpuMode === modelData ? Theme.base : Theme.surfaceText
-                                        font.weight: root.activeGpuMode === modelData ? Font.Bold : Font.Normal
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        anchors.horizontalCenter: parent.horizontalCenter
                                     }
                                 }
 
