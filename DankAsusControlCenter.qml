@@ -119,27 +119,27 @@ PluginComponent {
                     root.batteryStatus = match[1];
                 }
 
-                match = trimmed.match(/energy:\s*([\d,]+)\s*Wh/);
+                match = trimmed.match(/energy:\s*([\d.,]+)\s*Wh/);
                 if (match) {
                     root.batteryEnergy = parseFloat(match[1].replace(",", "."));
                 }
 
-                match = trimmed.match(/energy-full:\s*([\d,]+)\s*Wh/);
+                match = trimmed.match(/energy-full:\s*([\d.,]+)\s*Wh/);
                 if (match) {
                     root.batteryEnergyFull = parseFloat(match[1].replace(",", "."));
                 }
 
-                match = trimmed.match(/energy-full-design:\s*([\d,]+)\s*Wh/);
+                match = trimmed.match(/energy-full-design:\s*([\d.,]+)\s*Wh/);
                 if (match) {
                     root.batteryEnergyDesign = parseFloat(match[1].replace(",", "."));
                 }
 
-                match = trimmed.match(/voltage:\s*([\d,]+)\s*V/);
+                match = trimmed.match(/voltage:\s*([\d.,]+)\s*V/);
                 if (match) {
                     root.batteryVoltage = parseFloat(match[1].replace(",", "."));
                 }
 
-                match = trimmed.match(/capacity:\s*([\d,]+)%/);
+                match = trimmed.match(/capacity:\s*([\d.,]+)%/);
                 if (match) {
                     root.batteryCapacity = parseFloat(match[1].replace(",", "."));
                 }
