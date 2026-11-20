@@ -1,12 +1,16 @@
 {
   "id": "dankAsusControlCenter",
-  "name": "Dank ASUS Control Center",
-  "description": "Manage Power Profiles and GPU Modes for ASUS Laptops",
-  "version": "2.1.0",
+  "name": "ASUS Control Center",
+  "description": "ASUS laptop controls in DMS: power profiles, GPU mode switching (reboot required), battery charge limit and one-shot charging, panel overdrive, screen auto brightness, NVIDIA/CPU power tuning, keyboard backlight and battery stats.",
+  "version": "3.0.0",
   "author": "Shazzaam",
   "icon": "developer_board",
   "type": "widget",
-  "component": "DankAsusControlCenter.qml",
-  "settings": "DankAsusControlCenterSettings.qml",
+  "capabilities": ["power-profiles", "gpu-modes", "battery", "display", "system-controls"],
+  "component": "./DankAsusControlCenter.qml",
+  "settings": "./DankAsusControlCenterSettings.qml",
+  "startupCheck": "./StartupCheck.qml",
+  "requires_dms": ">=2.0.0",
+  "dependencies": ["asusctl"],
   "permissions": ["process", "settings_read", "settings_write"]
 }

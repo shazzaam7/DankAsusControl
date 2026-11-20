@@ -1,7 +1,7 @@
 import QtQuick
 import qs.Common
+import qs.DCommon.Widgets
 import qs.Modules.Plugins
-import qs.Widgets
 
 PluginSettings {
     id: root
@@ -48,7 +48,7 @@ PluginSettings {
             Row {
                 width: parent.width
                 spacing: Theme.spacingM
-                DankIcon { name: "visibility"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                DIcon { name: "visibility"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                 ToggleSetting {
                     id: showBatteryToggle
                     width: parent.width - 22 - Theme.spacingM
@@ -88,7 +88,7 @@ PluginSettings {
             Row {
                 width: parent.width
                 spacing: Theme.spacingM
-                DankIcon { name: "palette"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                DIcon { name: "palette"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                 ToggleSetting {
                     id: useThemeToggle
                     width: parent.width - 22 - Theme.spacingM
@@ -102,7 +102,7 @@ PluginSettings {
             Row {
                 width: parent.width
                 spacing: Theme.spacingM
-                DankIcon { name: "rocket_launch"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                DIcon { name: "rocket_launch"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                 SelectionSetting {
                     visible: useThemeToggle.value
                     width: parent.width - 22 - Theme.spacingM
@@ -125,7 +125,7 @@ PluginSettings {
             Row {
                 width: parent.width
                 spacing: Theme.spacingM
-                DankIcon { name: "balance"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                DIcon { name: "balance"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                 SelectionSetting {
                     visible: useThemeToggle.value
                     width: parent.width - 22 - Theme.spacingM
@@ -148,7 +148,7 @@ PluginSettings {
             Row {
                 width: parent.width
                 spacing: Theme.spacingM
-                DankIcon { name: "bedtime"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                DIcon { name: "bedtime"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                 SelectionSetting {
                     visible: useThemeToggle.value
                     width: parent.width - 22 - Theme.spacingM
@@ -171,7 +171,7 @@ PluginSettings {
             Row {
                 width: parent.width
                 spacing: Theme.spacingM
-                DankIcon { name: "memory"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                DIcon { name: "memory"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                 SelectionSetting {
                     visible: useThemeToggle.value
                     width: parent.width - 22 - Theme.spacingM
@@ -188,6 +188,52 @@ PluginSettings {
                     label: "GPU Mode Color"
                     description: ""
                     defaultValue: "#89B4FA"
+                }
+            }
+        }
+    }
+
+    // Advanced: polling cadence for the popout. The controller owns the timer
+    // and reads this preference through SettingsData.
+    Rectangle {
+        width: parent.width
+        height: advancedGroup.implicitHeight + Theme.spacingM * 2
+        color: Theme.surfaceContainer
+        radius: Theme.cornerRadius
+        border.color: Theme.outline
+        border.width: 1
+        opacity: 0.8
+
+        function loadValue() {
+            for (var i = 0; i < advancedGroup.children.length; i++) {
+                var row = advancedGroup.children[i];
+                for (var j = 0; j < row.children.length; j++) {
+                    if (row.children[j].loadValue) row.children[j].loadValue();
+                }
+            }
+        }
+
+        Column {
+            id: advancedGroup
+            anchors.fill: parent
+            anchors.margins: Theme.spacingM
+            spacing: Theme.spacingM
+
+            Row {
+                width: parent.width
+                spacing: Theme.spacingM
+                DIcon { name: "schedule"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                SelectionSetting {
+                    width: parent.width - 22 - Theme.spacingM
+                    settingKey: "refreshInterval"
+                    label: "Refresh Interval"
+                    description: "How often hardware values are re-read while the popout is open"
+                    options: [
+                        { label: "3 seconds", value: "3000" },
+                        { label: "5 seconds", value: "5000" },
+                        { label: "10 seconds", value: "10000" }
+                    ]
+                    defaultValue: "5000"
                 }
             }
         }

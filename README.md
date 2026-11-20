@@ -1,64 +1,73 @@
-# Dank ASUS Control Center for DankMaterialShell
-Continuation of [ASUS Control Center](https://github.com/pseudofractal/AsusControl)
+# ASUS Control Center for DMS
 
-Power & GPU Management for ASUS Laptops.  
-A plugin for [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell)
-
-<div align="center">
-  <img src="assets/popup.png" alt="Dank Asus Control Center Popup"/>
-</div>
-
-**Dank Asus Control Center** is a plugin for DankMaterialShell that integrates `asusctl` and `supergfxctl` directly into your desktop interface. It provides a seamless way to interact with `asusctl` & `supergfxctl` without opening your terminal.
-
-## Features
-
-- **Power Profiles**: Switch between *Quiet*, *Balanced*, and *Performance* modes on the fly.
-- **GPU Switching**: Toggle *Integrated*, *Hybrid*, and *Dedicated* graphics modes.
-- **Auto-Logout**: Automatically detects your session (Hyprland, Niri, Sway, KDE, Gnome, etc.) and performs the required logout when switching GPU modes.
-- **Battery Charge Tray Icon**: Shows current battery charge percentage as a tray icon
-- **Battery Charge Limit/One Shot**: Allows you to change the charge limit for your battery, while One Shot will temporarily remove this limit in order to charge your battery to 100%
+ASUS laptop controls integrated into [Dux Modular Shell (DMS)](https://github.com/AvengeMedia/DankMaterialShell). Manage power profiles, GPU modes, battery charging, display options, and performance tuning without leaving your desktop.
 
 ## Requirements
 
-This plugin requires the following to be installed on your system:
+- **DMS 2.2 or newer** recommended (the manifest's minimum is `requires_dms: >=2.0.0`).
+- **asusctl 6.x** with the `asusd` daemon running. The plugin checks for `asusctl` at startup and will not enable if it is missing.
+- An ASUS laptop with hardware supported by asusctl.
 
-1.  **[DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell)**: The shell environment.
-2.  **[asusctl](https://gitlab.com/asus-linux/asusctl)**: For power profile management.
-3.  **[supergfxctl](https://gitlab.com/asus-linux/supergfxctl)**: For GPU switching.
-4.  **[upower](https://upower.freedesktop.org/)**: For Battery stats.
+Some features (GPU modes, charge limits, tuning, keyboard backlight) depend on the attributes your device exposes through asusctl; unsupported sections are hidden automatically.
 
-> **Note**: Ensure the `supergfxd` service is active and your user has permissions to control it (usually by being part of the `asus-users` group).
+## Features
+
+- **Power profiles** — switch between Quiet, Balanced, Performance, and any other profiles your device reports.
+- **GPU modes** — choose Integrated, Hybrid, or Ultimate (on supported machines). Changing modes queues the change in asusd and **requires a reboot** to apply.
+- **Battery charge limit and one-shot charging** — set a persistent charge limit (20–100%, step 5) or run a one-shot charge to 100%.
+- **Panel overdrive** — toggle on supported displays.
+- **Screen auto brightness** — toggle ambient-light-based brightness adjustment.
+- **NVIDIA power tuning** — adjust TGP, dynamic boost, and temperature target where supported.
+- **CPU power limits** — adjust PL1/PL2/PL3 limits on supported hardware under "CPU Power Limits (advanced)".
+- **Keyboard backlight** — set the backlight to Off, Low, Med, or High.
+- **Control Center tile** — a compact tile that shows the active profile and battery percentage; clicking it cycles profiles, and a detail panel offers one button per profile.
+- **Battery stats** — percentage, state, health, capacity/energy, charge rate, and time remaining from DMS's battery service.
+
+> Changing GPU mode and some hardware options is handled entirely by asusctl/asusd. DMS may reapply its own configured power profile when the power source changes (AC ↔ battery); the popout refreshes from asusctl so the displayed profile always reflects reality.
 
 ## Installation
 
-### Manual Installation
-
-Clone this repository into your DankMaterialShell plugins directory (typically located at `~/.config/DankMaterialShell/plugins` depending on your setup).
+Clone this repository into your DMS plugins directory (typically `~/.config/dms/plugins`):
 
 ```bash
-cd ~/.config/DankMaterialShell/plugins
+mkdir -p ~/.config/dms/plugins
+cd ~/.config/dms/plugins
 git clone https://github.com/shazzaam7/DankAsusControl.git
 ```
 
-Once installed, restart DankMaterialShell using `dms restart`.
+Then restart DMS with `dms restart`, open **Settings → Plugins**, scan for plugins, and enable **ASUS Control Center**. Add the widget to your bar or dock layout to use the popout.
 
 ## Usage
 
-1.  **Add to Layout**: Add the `asusControlCenter` widget to configuration in DMS.
-2.  **Interact**:
-    *   Click the icon to open the popout menu.
-    *   Select a **Power Profile** to apply it immediately.
-    *   Select a **GPU Mode** to switch graphics cards.
-        *   ⚠️ **Warning**: Switching GPU modes requires a session restart. The plugin will notify you and log you out automatically after 5 seconds.
+Click the pill to open the popout. Sections appear only for features your hardware supports.
 
-## Configuration
+### GPU modes and reboot
 
-The widget attempts to auto-detect your desktop environment to handle logouts. If you use a custom setup, you can modify the `desktopSpecificCommands` map in `AsusControlCenter.qml`:
+Selecting a GPU mode writes the queued values to asusd. The change takes effect at shutdown, so a confirmation dialog appears asking **"Reboot to apply GPU mode?"**:
 
-```qml
-readonly property var desktopSpecificCommands: {
-  "hyprland": ["hyprctl", "dispatch", "exit"],
-  "niri":     ["niri", "msg", "action", "quit"],
-  // ... add your custom logout command here
-}
-```
+- **Reboot** reboots the system immediately.
+- **Later** dismisses the dialog and leaves a badge in the popout header (and a dot on the bar pill) until you reboot or restart the shell.
+
+If a write fails, the popout shows an error; a partially applied change is rolled back automatically where possible.
+
+### Charge limit / one-shot
+
+Use the slider to set the maximum charge level. **One-shot charging** temporarily lifts the limit for a single charge to 100%. When the firmware reports a charge mode, it is shown as a read-only chip.
+
+### NVIDIA / CPU tuning
+
+Tuning sliders appear when your device exposes the corresponding asusctl attributes. Each has a **default** button to reset it to `-1`.
+
+> Profile tuning must be enabled for the current profile/power state before PPT (CPU/NVIDIA) values can be written. When tuning is off, the sliders are disabled and an **Enable profile tuning** button is shown — the plugin never enables it silently. This is a system-level change (EPP/fan behavior), so enable it deliberately.
+
+### Keyboard backlight
+
+Pick Off, Low, Med, or High. The active level is highlighted and verified by re-reading asusctl after the change.
+
+### Control Center tile
+
+The tile is available in DMS Control Center (a CompoundPill when the detail panel is enabled). It shows the active profile and battery percentage; clicking the tile cycles to the next supported profile, and the expanded panel lists all supported profiles.
+
+## Settings
+
+Open the plugin's settings from **Settings → Plugins** to control the theme colors, tray battery icon, and refresh interval (3 s / 5 s / 10 s, default 5 s). Hardware state is never persisted.
