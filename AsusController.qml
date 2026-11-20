@@ -11,6 +11,7 @@ QtObject {
 
     required property string pluginId
     property bool live: false
+    property string auraPath: ""
 
     // Write concurrency: every command gets a monotonic token so a late callback
     // from a superseded request is ignored. GPU switches are additionally gated
@@ -24,15 +25,15 @@ QtObject {
 
     readonly property var state: shared.value
 
-    // Startup: one batched hardware read (spec §7.3 trigger 1) plus the one-shot
-    // static info probe (spec §7.5). Neither is attached to the polling timer.
+    // Startup: one batched hardware read plus the one-shot static info probe.
+    // Neither is attached to the polling timer.
     Component.onCompleted: {
         root.refresh();
         root.probeInfo();
     }
 
-    // The single batched hardware read from spec §7.3. Each command is framed by
-    // a marker so a garbled or missing section cannot break the whole refresh.
+    // The single batched hardware read. Each command is framed by a marker so a
+    // garbled or missing section cannot break the whole refresh.
     readonly property string refreshScript: [
         "printf '@@PROFILE_GET@@\\n'; asusctl profile get",
         "printf '@@PROFILE_LIST@@\\n'; asusctl profile list",
@@ -40,6 +41,23 @@ QtObject {
         "printf '@@ARMOURY@@\\n';      asusctl armoury list",
         "printf '@@LEDS@@\\n';         asusctl leds get",
         "printf '@@TUNING@@\\n';       asusctl profile tuning",
+        "printf '@@NVIDIA_POWERD@@\\n'; busctl --system get-property xyz.ljones.Asusd /xyz/ljones xyz.ljones.Platform DisableNvidiaPowerdOnBattery",
+        "printf '@@END@@\\n'"
+    ].join("\n")
+
+    // Aura state is read on demand (Keys tab / after an Aura write), not on every
+    // batched refresh: it is a separate set of D-Bus property reads.
+    readonly property string auraScript: [
+        "AURA_PATH=$(busctl tree xyz.ljones.Asusd | grep -o '/xyz/ljones/aura/[^ ]*' | head -1)",
+        "printf '@@AURA_PATH@@\\n'; printf '%s\\n' \"$AURA_PATH\"",
+        "printf '@@AURA_MODE@@\\n'; busctl --system get-property xyz.ljones.Asusd \"$AURA_PATH\" xyz.ljones.Aura LedMode",
+        "printf '@@AURA_DATA@@\\n'; busctl --system get-property xyz.ljones.Asusd \"$AURA_PATH\" xyz.ljones.Aura LedModeData",
+        "printf '@@AURA_POWER@@\\n'; busctl --system get-property xyz.ljones.Asusd \"$AURA_PATH\" xyz.ljones.Aura LedPower",
+        "printf '@@AURA_MODES@@\\n'; busctl --system get-property xyz.ljones.Asusd \"$AURA_PATH\" xyz.ljones.Aura SupportedBasicModes",
+        "printf '@@AURA_ZONES@@\\n'; busctl --system get-property xyz.ljones.Asusd \"$AURA_PATH\" xyz.ljones.Aura SupportedBasicZones",
+        "printf '@@AURA_POWER_ZONES@@\\n'; busctl --system get-property xyz.ljones.Asusd \"$AURA_PATH\" xyz.ljones.Aura SupportedPowerZones",
+        "printf '@@AURA_BRIGHTNESS@@\\n'; busctl --system get-property xyz.ljones.Asusd \"$AURA_PATH\" xyz.ljones.Aura Brightness",
+        "printf '@@AURA_SUPPORTED_BRIGHTNESS@@\\n'; busctl --system get-property xyz.ljones.Asusd \"$AURA_PATH\" xyz.ljones.Aura SupportedBrightness",
         "printf '@@END@@\\n'"
     ].join("\n")
 
@@ -65,7 +83,10 @@ QtObject {
                 tuningEnabled: false,
                 gpuRebootRequired: false,
                 productInfo: "",
-                asusctlVersion: ""
+                asusctlVersion: "",
+                nvidiaPowerdDisabled: false,
+                aura: null,
+                fanCurves: null
             })
         }
 
@@ -146,6 +167,8 @@ QtObject {
             root.publish("armoury", Asusctl.parseArmoury(sections["ARMOURY"]));
             root.publish("ledsLevel", Asusctl.parseLeds(sections["LEDS"]));
             root.publish("tuningEnabled", Asusctl.parseTuning(sections["TUNING"]) === true);
+            var nvidiaPowerd = Asusctl.parseBusctlBool(sections["NVIDIA_POWERD"]);
+            if (nvidiaPowerd !== null) root.publish("nvidiaPowerdDisabled", nvidiaPowerd);
         }, 100, undefined, root);
     }
 
@@ -356,4 +379,233 @@ QtObject {
             return Asusctl.parseTuning(sections["GET"]) === desired;
         });
     }
+    // ------------------------------------------------------------------
+    // Aura (read/write via asusd's D-Bus Aura interface)
+    // ------------------------------------------------------------------
+    function refreshAura() {
+        Proc.runCommand("dankAsusControlCenter.refreshAura", ["sh", "-c", root.auraScript], function(stdout) {
+            var sections = Asusctl.parseSections(stdout);
+            var path = String(sections["AURA_PATH"] || "").trim();
+            if (path) root.auraPath = path;
+            var mode = Asusctl.parseBusctlUint(sections["AURA_MODE"]);
+            var data = Asusctl.parseAuraModeData(sections["AURA_DATA"]);
+            var power = Asusctl.parseAuraPower(sections["AURA_POWER"]) || [];
+            var modeIds = Asusctl.parseBusctlUintArray(sections["AURA_MODES"]) || [];
+            var zones = Asusctl.parseBusctlUintArray(sections["AURA_ZONES"]) || [];
+            var powerZones = Asusctl.parseBusctlUintArray(sections["AURA_POWER_ZONES"]) || [];
+            var brightness = Asusctl.parseBusctlUint(sections["AURA_BRIGHTNESS"]);
+            var supportedBrightness = Asusctl.parseBusctlUintArray(sections["AURA_SUPPORTED_BRIGHTNESS"]) || [];
+
+            if (mode === null && modeIds.length === 0) return;
+
+            var supportedModes = [];
+            for (var i = 0; i < modeIds.length; ++i) {
+                var supported = Asusctl.auraMode(modeIds[i]);
+                if (supported) supportedModes.push(supported);
+            }
+            var active = mode === null ? null : Asusctl.auraMode(mode);
+
+            root.publish("aura", {
+                mode: mode,
+                modeName: active ? active.name : null,
+                data: data,
+                power: power,
+                supportedModes: supportedModes,
+                supportedZones: zones,
+                supportedPowerZones: powerZones,
+                brightness: brightness,
+                supportedBrightness: supportedBrightness,
+                colour1: data ? Asusctl.rgbToHex(data.colour1) : "ffffff",
+                colour2: data ? Asusctl.rgbToHex(data.colour2) : "000000",
+                speed: data ? data.speed : "Med",
+                direction: data ? data.direction : "Right"
+            });
+        }, 50, undefined, root);
+    }
+
+    // NVIDIA powerd-on-battery policy: no asusctl CLI, only the Platform property.
+    function setNvidiaPowerd(disabled) {
+        var target = !!disabled;
+        var script = "printf '@@SET@@\\n'; busctl --system set-property xyz.ljones.Asusd /xyz/ljones xyz.ljones.Platform DisableNvidiaPowerdOnBattery b " + (target ? "true" : "false") + " 2>&1" +
+                     "; printf '@@GET@@\\n'; busctl --system get-property xyz.ljones.Asusd /xyz/ljones xyz.ljones.Platform DisableNvidiaPowerdOnBattery";
+        root.runWrite("dankAsusControlCenter.setNvidiaPowerd", script, function(stdout) {
+            var sections = Asusctl.parseSections(stdout);
+            var ok = Asusctl.parseBusctlBool(sections["GET"]) === target;
+            if (ok) root.publish("nvidiaPowerdDisabled", target);
+            return ok;
+        });
+    }
+
+    function setAuraEffect(modeName, colour1, colour2, speed, direction, zone) {
+        var mode = Asusctl.auraModeByName(modeName);
+        if (!mode) {
+            ToastService.showError("ASUS Control", "Unsupported Aura mode");
+            return;
+        }
+
+        var args = ["asusctl", "aura", "effect", mode.cli];
+        if (mode.colours >= 1) {
+            var c1 = Asusctl.normaliseHex(colour1);
+            if (!c1) {
+                ToastService.showError("ASUS Control", "Colour 1 must be a #RRGGBB value");
+                return;
+            }
+            args.push("--colour", c1);
+        }
+        if (mode.colours >= 2) {
+            var c2 = Asusctl.normaliseHex(colour2);
+            if (!c2) {
+                ToastService.showError("ASUS Control", "Colour 2 must be a #RRGGBB value");
+                return;
+            }
+            args.push("--colour2", c2);
+        }
+        if (mode.speed) {
+            var sp = String(speed || "").toLowerCase();
+            if (["low", "med", "high"].indexOf(sp) === -1) {
+                ToastService.showError("ASUS Control", "Speed must be low, med or high");
+                return;
+            }
+            args.push("--speed", sp);
+        }
+        if (mode.direction) {
+            var dir = String(direction || "").toLowerCase();
+            if (["up", "down", "left", "right"].indexOf(dir) === -1) {
+                ToastService.showError("ASUS Control", "Direction must be up, down, left or right");
+                return;
+            }
+            args.push("--direction", dir);
+        }
+        var aura = root.state.aura;
+        if (aura && (aura.supportedZones || []).length > 1 && zone !== undefined && zone !== null)
+            args.push("--zone", String(zone));
+
+        if (!root.auraPath) {
+            ToastService.showError("ASUS Control", "Aura state is not loaded yet");
+            return;
+        }
+        var command = args.map(root.quote).join(" ");
+        var script = "printf '@@SET@@\\n'; " + command + " 2>&1" +
+                     "; printf '@@GET@@\\n'; busctl --system get-property xyz.ljones.Asusd " + root.quote(root.auraPath) + " xyz.ljones.Aura LedMode";
+        root.runWrite("dankAsusControlCenter.setAuraEffect", script, function(stdout) {
+            var sections = Asusctl.parseSections(stdout);
+            var ok = Asusctl.parseBusctlUint(sections["GET"]) === mode.id;
+            if (ok) root.refreshAura();
+            return ok;
+        });
+    }
+
+    function setAuraBrightness(level) {
+        var target = Number(level);
+        if (!isFinite(target) || target < 0 || target > 3) {
+            ToastService.showError("ASUS Control", "Aura brightness must be 0-3");
+            return;
+        }
+        if (!root.auraPath) {
+            ToastService.showError("ASUS Control", "Aura state is not loaded yet");
+            return;
+        }
+        var script = "printf '@@SET@@\\n'; busctl --system set-property xyz.ljones.Asusd " + root.quote(root.auraPath) + " xyz.ljones.Aura Brightness u " + target + " 2>&1" +
+                     "; printf '@@GET@@\\n'; busctl --system get-property xyz.ljones.Asusd " + root.quote(root.auraPath) + " xyz.ljones.Aura Brightness";
+        root.runWrite("dankAsusControlCenter.setAuraBrightness", script, function(stdout) {
+            var ok = Asusctl.parseBusctlUint(Asusctl.parseSections(stdout)["GET"]) === target;
+            if (ok) root.refreshAura();
+            return ok;
+        });
+    }
+
+    function setAuraPower(zone, boot, awake, sleep, shutdown) {
+        var cli = Asusctl.auraPowerZoneCli(zone);
+        if (!cli) {
+            ToastService.showError("ASUS Control", "Unsupported Aura power zone");
+            return;
+        }
+        var args = ["asusctl", "aura", "power", cli];
+        if (boot) args.push("--boot");
+        if (awake) args.push("--awake");
+        if (sleep) args.push("--sleep");
+        if (shutdown) args.push("--shutdown");
+
+        if (!root.auraPath) {
+            ToastService.showError("ASUS Control", "Aura state is not loaded yet");
+            return;
+        }
+        var command = args.map(root.quote).join(" ");
+        var script = "printf '@@SET@@\\n'; " + command + " 2>&1" +
+                     "; printf '@@GET@@\\n'; busctl --system get-property xyz.ljones.Asusd " + root.quote(root.auraPath) + " xyz.ljones.Aura LedPower";
+        root.runWrite("dankAsusControlCenter.setAuraPower", script, function(stdout) {
+            var sections = Asusctl.parseSections(stdout);
+            var power = Asusctl.parseAuraPower(sections["GET"]) || [];
+            var entry = null;
+            for (var i = 0; i < power.length; ++i)
+                if (power[i].zone === Number(zone)) entry = power[i];
+            var ok = !!entry && entry.boot === !!boot && entry.awake === !!awake
+                && entry.sleep === !!sleep && entry.shutdown === !!shutdown;
+            if (ok) root.refreshAura();
+            return ok;
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Fan curves (CLI read/write, per profile and fan)
+    // ------------------------------------------------------------------
+    function refreshFanCurves(profile) {
+        var p = profile || "Balanced";
+        Proc.runCommand("dankAsusControlCenter.refreshFanCurves", ["sh", "-c", "asusctl fan-curve --mod-profile " + root.quote(p)], function(stdout) {
+            var parsed = Asusctl.parseFanCurves(stdout);
+            if (parsed && parsed.profile && parsed.fans.length) root.publish("fanCurves", parsed);
+        }, 50, undefined, root);
+    }
+
+    function setFanCurve(profile, fan, points) {
+        if (!points || points.length !== 8) {
+            ToastService.showError("ASUS Control", "A fan curve needs exactly 8 points");
+            return;
+        }
+        var sorted = [];
+        for (var i = 0; i < points.length; ++i) {
+            var temp = Number(points[i].temp);
+            var pwm = Number(points[i].pwm);
+            if (!isFinite(temp) || temp < 20 || temp > 100 || !isFinite(pwm) || pwm < 0 || pwm > 100) {
+                ToastService.showError("ASUS Control", "Temperatures must be 20-100°C and PWM 0-100%");
+                return;
+            }
+            sorted.push({ temp: temp, pwm: pwm });
+        }
+        sorted.sort(function(a, b) { return a.temp - b.temp; });
+        for (var j = 1; j < sorted.length; ++j) {
+            if (sorted[j].temp <= sorted[j - 1].temp) {
+                ToastService.showError("ASUS Control", "Fan curve temperatures must be unique");
+                return;
+            }
+        }
+
+        var data = Asusctl.fanCurveData(sorted);
+        var script = "printf '@@SET@@\\n'; asusctl fan-curve --mod-profile " + root.quote(profile)
+            + " --fan " + root.quote(String(fan).toLowerCase())
+            + " --data " + root.quote(data) + " 2>&1";
+        root.runWrite("dankAsusControlCenter.setFanCurve", script, function(stdout) {
+            root.refreshFanCurves(profile);
+            return true;
+        });
+    }
+
+    function setFanCurveEnabled(profile, fan, enabled) {
+        var script = "printf '@@SET@@\\n'; asusctl fan-curve --mod-profile " + root.quote(profile)
+            + " --fan " + root.quote(String(fan).toLowerCase())
+            + " --enable-fan-curve " + (enabled ? "true" : "false") + " 2>&1";
+        root.runWrite("dankAsusControlCenter.setFanCurveEnabled", script, function(stdout) {
+            root.refreshFanCurves(profile);
+            return true;
+        });
+    }
+
+    function resetFanCurves(profile) {
+        var script = "printf '@@SET@@\\n'; asusctl fan-curve --mod-profile " + root.quote(profile) + " --default 2>&1";
+        root.runWrite("dankAsusControlCenter.resetFanCurves", script, function(stdout) {
+            root.refreshFanCurves(profile);
+            return true;
+        });
+    }
+
 }

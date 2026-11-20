@@ -6,11 +6,24 @@
   "author": "Shazzaam",
   "icon": "developer_board",
   "type": "widget",
-  "capabilities": ["power-profiles", "gpu-modes", "battery", "display", "system-controls"],
+  "capabilities": [
+    "power-profiles",
+    "gpu-modes",
+    "battery",
+    "display",
+    "system-controls"
+  ],
   "component": "./DankAsusControlCenter.qml",
   "settings": "./DankAsusControlCenterSettings.qml",
   "startupCheck": "./StartupCheck.qml",
   "requires_dms": ">=2.0.0",
-  "dependencies": ["asusctl"],
-  "permissions": ["process", "settings_read", "settings_write"]
+  "dependencies": [
+    "asusctl",
+    "busctl"
+  ],
+  "permissions": [
+    "process",
+    "settings_read",
+    "settings_write"
+  ]
 }

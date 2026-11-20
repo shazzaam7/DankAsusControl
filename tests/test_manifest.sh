@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 # Manifest must be valid JSON.
 jq -e . plugin.json >/dev/null
 
-# Manifest fields match the v3 rewrite contract.
+# Manifest fields match the plugin contract.
 jq -e '.id == "dankAsusControlCenter" and .version == "3.0.0" and .requires_dms == ">=2.0.0" and (.capabilities|length) >= 1 and .component == "./DankAsusControlCenter.qml" and (.permissions|index("settings_write")) != null' plugin.json >/dev/null
 
 # Startup check exposes the async check(done) entry point.

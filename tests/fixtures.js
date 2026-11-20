@@ -78,4 +78,33 @@ var armouryCustom = [
 var errorStderr = "Failed to connect to the system bus\n";
 var errorBracket = "[ERROR Could not set attribute]\n";
 
+var auraModeData = '(uu(yyy)(yyy)ss) 2 0 255 128 0 0 0 0 "Med" "Right"';
+var auraPowerData = '(a(ubbbb)) 1 1 true false true false';
+var busctlModes = 'au 4 0 1 2 10';
+var busctlZones = 'au 1 0';
+var busctlPowerZones = 'au 1 1';
+var busctlBrightness = 'au 4 0 1 2 3';
+var nvidiaPowerdOn = 'b true';
+var nvidiaPowerdOff = 'b false';
+
+var fanCurvesBalanced = [
+    '',
+    'Fan curves for Balanced',
+    '',
+    '[',
+    '    (',
+    '        fan: CPU,',
+    '        pwm: (2, 17, 28, 38, 43, 58, 79, 89),',
+    '        temp: (41, 48, 55, 71, 75, 80, 84, 88),',
+    '        enabled: false,',
+    '    ),',
+    '    (',
+    '        fan: GPU,',
+    '        pwm: (2, 15, 25, 30, 45, 51, 66, 96),',
+    '        temp: (38, 40, 47, 53, 60, 67, 73, 80),',
+    '        enabled: false,',
+    '    ),',
+    ']'
+].join("\n");
+
 var empty = "";

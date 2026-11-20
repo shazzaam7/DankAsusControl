@@ -66,6 +66,28 @@ ShellRoot {
             var modes2 = Asusctl.supportedGpuModes(onlyDgpu);
             check("supportedGpuModes.dgpuOnly", modes2.indexOf("Integrated") !== -1 && modes2.indexOf("Hybrid") !== -1 && modes2.indexOf("Ultimate") === -1, "got " + modes2.join(","));
 
+            var md = Asusctl.parseAuraModeData(F.auraModeData);
+            check("aura.modeData", !!md && md.mode === 2 && md.zone === 0 && md.colour1.r === 255 && md.colour1.g === 128 && md.colour2.r === 0 && md.speed === "Med" && md.direction === "Right", "got " + JSON.stringify(md));
+
+            var ap = Asusctl.parseAuraPower(F.auraPowerData);
+            check("aura.power", !!ap && ap.length === 1 && ap[0].zone === 1 && ap[0].boot === true && ap[0].awake === false && ap[0].sleep === true && ap[0].shutdown === false, "got " + JSON.stringify(ap));
+
+            check("busctl.modes", Asusctl.parseBusctlUintArray(F.busctlModes).join(",") === "0,1,2,10", "got " + Asusctl.parseBusctlUintArray(F.busctlModes));
+            check("busctl.uint", Asusctl.parseBusctlUint("u 2") === 2 && Asusctl.parseBusctlUint("") === null);
+            check("busctl.empty", Asusctl.parseBusctlUintArray("au 0").length === 0);
+            check("busctl.bool", Asusctl.parseBusctlBool(F.nvidiaPowerdOn) === true && Asusctl.parseBusctlBool(F.nvidiaPowerdOff) === false);
+
+            check("aura.modeByName", Asusctl.auraModeByName("RainbowCycle").id === 2 && Asusctl.auraMode(10).name === "Pulse");
+            check("aura.zoneName", Asusctl.auraPowerZoneName(1) === "Keyboard" && Asusctl.auraPowerZoneCli(1) === "keyboard");
+
+            var fc = Asusctl.parseFanCurves(F.fanCurvesBalanced);
+            check("fanCurves.profile", !!fc && fc.profile === "Balanced" && fc.fans.length === 2, "got " + JSON.stringify(fc && fc.profile));
+            check("fanCurves.cpu", !!fc && fc.fans[0].fan === "CPU" && fc.fans[0].temp.length === 8 && fc.fans[0].pwm[0] === 2 && fc.fans[0].enabled === false);
+            check("fanCurveData", Asusctl.fanCurveData([{ temp: 41, pwm: 10 }, { temp: 48, pwm: 20 }]) === "41c:10%,48c:20%", "got " + Asusctl.fanCurveData([{ temp: 41, pwm: 10 }, { temp: 48, pwm: 20 }]));
+
+            check("colour.rgbToHex", Asusctl.rgbToHex({ r: 255, g: 128, b: 0 }) === "ff8000", "got " + Asusctl.rgbToHex({ r: 255, g: 128, b: 0 }));
+            check("colour.normaliseHex", Asusctl.normaliseHex("#FF8000") === "ff8000" && Asusctl.normaliseHex("zzzzzz") === null);
+
             var results = failures.length ? failures : "PASS";
             Quickshell.execDetached(["sh", "-c", "printf '%s' '" + results + "' > \"${DMS_ASUS_RESULT:-/tmp/opencode/dms-asus-parser-results}\""]);
             Qt.callLater(() => Qt.exit(0));

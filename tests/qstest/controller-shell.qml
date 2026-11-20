@@ -179,6 +179,65 @@ ShellRoot {
             var hasClamped = issued && Proc.commands[0].script.indexOf("115") !== -1;
             check("armoury.range.clamp", hasAttr && hasClamped, "len=" + Proc.commands.length);
 
+            // --- New GPU / Aura / fan-curve commands ---
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.setNvidiaPowerd": "@@SET@@\nOK\n@@GET@@\nb true\n" };
+            obj.setNvidiaPowerd(true);
+            check("nvidiaPowerd.command", Proc.commands.length > 0 && Proc.commands[0].id === "dankAsusControlCenter.setNvidiaPowerd", ids(Proc.commands));
+            check("nvidiaPowerd.script", Proc.commands[0].script.indexOf("DisableNvidiaPowerdOnBattery") !== -1 && Proc.commands[0].script.indexOf("true") !== -1, Proc.commands[0].script);
+            check("nvidiaPowerd.state", obj.state.nvidiaPowerdDisabled === true, String(obj.state.nvidiaPowerdDisabled));
+
+            obj.auraPath = "/xyz/ljones/aura/tuf";
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.setAuraEffect": "@@SET@@\nOK\n@@GET@@\nu 1\n" };
+            obj.publish("aura", { supportedZones: [0] });
+            obj.setAuraEffect("Breathe", "ff0000", "00ff00", "High", "Right", 0);
+            check("aura.effect.command", Proc.commands.length > 0 && Proc.commands[0].id === "dankAsusControlCenter.setAuraEffect", ids(Proc.commands));
+            check("aura.effect.script", Proc.commands[0].script.indexOf("breathe") !== -1
+                && Proc.commands[0].script.indexOf("00ff00") !== -1
+                && Proc.commands[0].script.indexOf("high") !== -1, Proc.commands[0].script);
+            check("aura.effect.refresh", ids(Proc.commands).indexOf("dankAsusControlCenter.refreshAura") !== -1, ids(Proc.commands));
+
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.setAuraBrightness": "@@SET@@\nOK\n@@GET@@\nu 2\n" };
+            obj.setAuraBrightness(2);
+            check("aura.brightness.script", Proc.commands[0].script.indexOf("Brightness u 2") !== -1, Proc.commands[0].script);
+
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.setAuraPower": "@@SET@@\nOK\n@@GET@@\n(a(ubbbb)) 1 1 true false true false\n" };
+            obj.setAuraPower(1, true, false, true, false);
+            check("aura.power.script", Proc.commands[0].script.indexOf("keyboard") !== -1
+                && Proc.commands[0].script.indexOf("--boot") !== -1
+                && Proc.commands[0].script.indexOf("--sleep") !== -1
+                && Proc.commands[0].script.indexOf("--awake") === -1, Proc.commands[0].script);
+
+            function fanPoints() {
+                var points = [];
+                for (var i = 0; i < 8; ++i) points.push({ temp: 30 + i * 5, pwm: i * 10 });
+                return points;
+            }
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.setFanCurve": "@@SET@@\nOK\n" };
+            obj.setFanCurve("Balanced", "CPU", fanPoints());
+            check("fanCurve.command", Proc.commands.length > 0 && Proc.commands[0].id === "dankAsusControlCenter.setFanCurve", ids(Proc.commands));
+            check("fanCurve.data", Proc.commands[0].script.indexOf("--data") !== -1
+                && Proc.commands[0].script.indexOf("30c") !== -1
+                && Proc.commands[0].script.indexOf("65c") !== -1, Proc.commands[0].script);
+
+            Proc.commands = [];
+            obj.setFanCurve("Balanced", "CPU", fanPoints().slice(0, 7));
+            check("fanCurve.reject7", Proc.commands.length === 0, ids(Proc.commands));
+
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.setFanCurveEnabled": "@@SET@@\nOK\n" };
+            obj.setFanCurveEnabled("Balanced", "CPU", true);
+            check("fanCurve.enableScript", Proc.commands[0].script.indexOf("--enable-fan-curve true") !== -1, Proc.commands[0].script);
+
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.resetFanCurves": "@@SET@@\nOK\n" };
+            obj.resetFanCurves("Balanced");
+            check("fanCurve.resetScript", Proc.commands[0].script.indexOf("--default") !== -1, Proc.commands[0].script);
+
             // Unparseable info output leaves both defaults empty.
             Proc.outputs = {
                 "dankAsusControlCenter.info": "sh: asusctl: not found\n",

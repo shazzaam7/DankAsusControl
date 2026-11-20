@@ -28,13 +28,22 @@ extract_timer() { awk 'index($0, "Timer {"){f=1} f{print} f && /^[[:space:]]*\}/
 has 'PluginGlobalVar' || fail 'PluginGlobalVar missing'
 has 'varName: "asusState"' || fail 'varName missing'
 
-# Public data/command interface from the task brief.
+# Public data and command interface.
 for fn in publish refresh refreshProfile hasAttr attr setProfile cycleProfile \
-          setGpuMode setBatteryLimit oneShot setArmoury resetArmoury setLeds setTuning; do
+          setGpuMode setBatteryLimit oneShot setArmoury resetArmoury setLeds setTuning \
+          refreshAura setNvidiaPowerd setAuraEffect setAuraBrightness setAuraPower \
+          refreshFanCurves setFanCurve setFanCurveEnabled resetFanCurves; do
     has "function $fn(" || fail "missing function $fn()"
 done
 has 'function probeInfo(' || fail 'probeInfo() missing'
 has 'signal gpuModeApplied(string mode)' || fail 'gpuModeApplied signal missing'
+has 'auraScript' || fail 'Aura refresh script missing'
+has 'xyz.ljones.Aura' || fail 'Aura D-Bus interface missing'
+has 'busctl --system' || fail 'busctl usage missing'
+has 'set-property' || fail 'busctl set-property usage missing'
+has 'fanCurveData' || fail 'fanCurveData helper missing'
+has 'nvidiaPowerdDisabled' || fail 'nvidia-powerd shared state missing'
+has 'fanCurves' || fail 'fan-curve shared state missing' 
 
 # Refresh plus the distinct write helpers must issue real commands.
 COUNT=$(grep -oF 'Proc.runCommand(' <<<"$BODY" | wc -l)

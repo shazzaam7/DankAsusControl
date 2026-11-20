@@ -121,6 +121,8 @@ function isAsusctlSuccess(stdout) {
     // their output is merged from stderr; such a write did not succeed.
     if (/\[\s*ERROR\b/i.test(value)) return false;
     if (/not running|failed to connect|connection refused/i.test(value)) return false;
+    // busctl surfaces property/object failures on stderr, merged into writes.
+    if (/failed to (set|get) property|access denied|unknown (object|property)/i.test(value)) return false;
     return true;
 }
 
@@ -155,4 +157,179 @@ function supportedGpuModes(armoury) {
     var modes = ["Integrated", "Hybrid"];
     if (attrs.gpu_mux_mode) modes.push("Ultimate");
     return modes;
+}
+
+// --- busctl / Aura helpers -------------------------------------------------
+
+function parseBusctlBool(text) {
+    var match = String(text == null ? "" : text).match(/\bb\s+(true|false)\b/i);
+    return match ? match[1].toLowerCase() === "true" : null;
+}
+
+function parseBusctlUint(text) {
+    var match = String(text == null ? "" : text).match(/\bu\s+(\d+)/);
+    return match ? parseInt(match[1], 10) : null;
+}
+
+function parseBusctlUintArray(text) {
+    var value = String(text == null ? "" : text);
+    var match = value.match(/\bau\s+(\d+)([\s\S]*)$/);
+    if (!match) return null;
+    var count = parseInt(match[1], 10);
+    var tokens = match[2].trim().length ? match[2].trim().split(/\s+/) : [];
+    var result = [];
+    for (var i = 0; i < count && i < tokens.length; ++i) {
+        var number = parseInt(tokens[i], 10);
+        if (!isNaN(number)) result.push(number);
+    }
+    return result;
+}
+
+var AURA_MODES = [
+    { id: 0, name: "Static", cli: "static", colours: 1, speed: false, direction: false },
+    { id: 1, name: "Breathe", cli: "breathe", colours: 2, speed: true, direction: false },
+    { id: 2, name: "RainbowCycle", cli: "rainbow-cycle", colours: 0, speed: true, direction: false },
+    { id: 3, name: "RainbowWave", cli: "rainbow-wave", colours: 0, speed: true, direction: true },
+    { id: 4, name: "Stars", cli: "stars", colours: 2, speed: true, direction: false },
+    { id: 5, name: "Rain", cli: "rain", colours: 0, speed: true, direction: false },
+    { id: 6, name: "Highlight", cli: "highlight", colours: 1, speed: true, direction: false },
+    { id: 7, name: "Laser", cli: "laser", colours: 1, speed: true, direction: false },
+    { id: 8, name: "Ripple", cli: "ripple", colours: 1, speed: true, direction: false },
+    { id: 10, name: "Pulse", cli: "pulse", colours: 1, speed: false, direction: false },
+    { id: 11, name: "Comet", cli: "comet", colours: 1, speed: false, direction: false },
+    { id: 12, name: "Flash", cli: "flash", colours: 1, speed: false, direction: false }
+];
+
+function auraMode(id) {
+    for (var i = 0; i < AURA_MODES.length; ++i)
+        if (AURA_MODES[i].id === Number(id)) return AURA_MODES[i];
+    return null;
+}
+
+function auraModeByName(name) {
+    var wanted = String(name || "").toLowerCase();
+    for (var i = 0; i < AURA_MODES.length; ++i)
+        if (AURA_MODES[i].name.toLowerCase() === wanted) return AURA_MODES[i];
+    return null;
+}
+
+function auraPowerZoneName(id) {
+    switch (Number(id)) {
+    case 0: return "Logo";
+    case 1: return "Keyboard";
+    case 2: return "Lightbar";
+    case 3: return "Lid";
+    case 4: return "Rear glow";
+    case 6: return "Ally";
+    default: return "Zone " + id;
+    }
+}
+
+function auraPowerZoneCli(id) {
+    switch (Number(id)) {
+    case 0: return "logo";
+    case 1: return "keyboard";
+    case 2: return "lightbar";
+    case 3: return "lid";
+    case 4: return "rear-glow";
+    case 6: return "ally";
+    default: return "";
+    }
+}
+
+function parseAuraModeData(text) {
+    var match = String(text == null ? "" : text).match(
+        /\(uu\(yyy\)\(yyy\)ss\)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+"([^"]*)"\s+"([^"]*)"/);
+    if (!match) return null;
+    return {
+        mode: parseInt(match[1], 10),
+        zone: parseInt(match[2], 10),
+        colour1: { r: parseInt(match[3], 10), g: parseInt(match[4], 10), b: parseInt(match[5], 10) },
+        colour2: { r: parseInt(match[6], 10), g: parseInt(match[7], 10), b: parseInt(match[8], 10) },
+        speed: match[9],
+        direction: match[10]
+    };
+}
+
+function parseAuraPower(text) {
+    var value = String(text == null ? "" : text);
+    var match = value.match(/\(a\(ubbbb\)\)\s+(\d+)([\s\S]*)$/);
+    if (!match) return null;
+    var count = parseInt(match[1], 10);
+    var tokens = match[2].trim().length ? match[2].trim().split(/\s+/) : [];
+    var result = [];
+    var index = 0;
+    for (var i = 0; i < count; ++i) {
+        if (index + 4 >= tokens.length) break;
+        var zone = parseInt(tokens[index++], 10);
+        result.push({
+            zone: zone,
+            boot: tokens[index++] === "true",
+            awake: tokens[index++] === "true",
+            sleep: tokens[index++] === "true",
+            shutdown: tokens[index++] === "true"
+        });
+    }
+    return result;
+}
+
+function parseFanCurves(text) {
+    var value = String(text == null ? "" : text);
+    var profileMatch = value.match(/Fan curves for\s+(\w+)/);
+    var fans = [];
+    var block = /fan:\s*(\w+),\s*pwm:\s*\(([^)]*)\),\s*temp:\s*\(([^)]*)\),\s*enabled:\s*(true|false)/g;
+    var match;
+    while ((match = block.exec(value)) !== null) {
+        var pwm = [];
+        var temp = [];
+        var pwmParts = match[2].split(",");
+        var tempParts = match[3].split(",");
+        for (var i = 0; i < pwmParts.length; ++i) {
+            var p = parseInt(pwmParts[i].trim(), 10);
+            if (!isNaN(p)) pwm.push(p);
+        }
+        for (var j = 0; j < tempParts.length; ++j) {
+            var t = parseInt(tempParts[j].trim(), 10);
+            if (!isNaN(t)) temp.push(t);
+        }
+        fans.push({ fan: match[1], pwm: pwm, temp: temp, enabled: match[4] === "true" });
+    }
+    return { profile: profileMatch ? profileMatch[1] : null, fans: fans };
+}
+
+function fanCurveData(fans) {
+    // fans: array of { temp, pwm } percentages, already validated/sorted.
+    var parts = [];
+    for (var i = 0; i < fans.length; ++i)
+        parts.push(Math.round(fans[i].temp) + "c:" + Math.round(fans[i].pwm) + "%");
+    return parts.join(",");
+}
+
+function _hexByte(value) {
+    var text = Math.max(0, Math.min(255, Math.round(Number(value) || 0))).toString(16);
+    return text.length === 1 ? "0" + text : text;
+}
+
+function rgbToHex(colour) {
+    if (!colour) return "000000";
+    return _hexByte(colour.r) + _hexByte(colour.g) + _hexByte(colour.b);
+}
+
+function normaliseHex(text) {
+    var value = String(text == null ? "" : text).trim().replace(/^#/, "").toLowerCase();
+    return /^[0-9a-f]{6}$/.test(value) ? value : null;
+}
+
+function auraZoneName(id) {
+    switch (Number(id)) {
+    case 0: return "All";
+    case 1: return "Key 1";
+    case 2: return "Key 2";
+    case 3: return "Key 3";
+    case 4: return "Key 4";
+    case 5: return "Logo";
+    case 6: return "Left bar";
+    case 7: return "Right bar";
+    default: return "Zone " + id;
+    }
 }
