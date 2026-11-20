@@ -2,10 +2,17 @@
 
 ASUS laptop controls integrated into [Dux Modular Shell (DMS)](https://github.com/AvengeMedia/DankMaterialShell). Manage power profiles, GPU modes, battery charging, display options, and performance tuning without leaving your desktop.
 
+<div align="center">
+  <img src="assets/popup.png" alt="ASUS Control Center popup"/>
+</div>
+
 ## Requirements
 
 - **DMS 2.2 or newer** recommended (the manifest's minimum is `requires_dms: >=2.0.0`).
-- **asusctl 6.x** with the `asusd` daemon running. The plugin checks for `asusctl` at startup and will not enable if it is missing.
+- **asusctl 6.x** with the `asusd` daemon running.
+- **busctl** (systemd), used to read/write the Aura and nvidia-powerd D-Bus properties.
+
+The plugin checks for both `asusctl` and `busctl` at startup and will not enable if either is missing.
 - An ASUS laptop with hardware supported by asusctl.
 
 Some features (GPU modes, charge limits, tuning, keyboard backlight) depend on the attributes your device exposes through asusctl; unsupported sections are hidden automatically.
@@ -13,12 +20,15 @@ Some features (GPU modes, charge limits, tuning, keyboard backlight) depend on t
 ## Features
 
 - **Power profiles** — switch between Quiet, Balanced, Performance, and any other profiles your device reports.
-- **GPU modes** — choose Integrated, Hybrid, or Ultimate (on supported machines). Changing modes queues the change in asusd and **requires a reboot** to apply.
+- **GPU modes** — choose Integrated, Hybrid, or Ultimate (on supported machines). Changing modes queues the change in asusd and **requires a reboot** to apply. Also toggles whether asusd disables nvidia-powerd while on battery.
 - **Battery charge limit and one-shot charging** — set a persistent charge limit (20–100%, step 5) or run a one-shot charge to 100%.
 - **Panel overdrive** — toggle on supported displays.
 - **Screen auto brightness** — toggle ambient-light-based brightness adjustment.
+- **Tuning tabs** — CPU, GPU, and Fans sub-tabs group the power and cooling controls.
 - **NVIDIA power tuning** — adjust TGP, dynamic boost, and temperature target where supported.
-- **CPU power limits** — adjust PL1/PL2/PL3 limits on supported hardware under "CPU Power Limits (advanced)".
+- **CPU power limits** — adjust PL1/PL2/PL3 limits on supported hardware.
+- **Fan curves** — per-profile, per-fan (CPU/GPU) 8-point temperature/PWM curve editor with enable and reset-to-default.
+- **Aura lighting** — choose a supported mode and its colours, speed, direction and zone (options the mode/hardware does not support are hidden), plus brightness and per-zone power states.
 - **Keyboard backlight** — set the backlight to Off, Low, Med, or High.
 - **Control Center tile** — a compact tile that shows the active profile and battery percentage; clicking it cycles profiles, and a detail panel offers one button per profile.
 - **Battery stats** — percentage, state, health, capacity/energy, charge rate, and time remaining from DMS's battery service.

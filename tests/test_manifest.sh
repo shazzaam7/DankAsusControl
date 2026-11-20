@@ -12,11 +12,12 @@ jq -e '.id == "dankAsusControlCenter" and .version == "3.0.0" and .requires_dms 
 # Startup check exposes the async check(done) entry point.
 grep -q 'function check(done)' StartupCheck.qml
 
-# No stale terminology or screenshot reference.
+# No stale terminology.
 if grep -RqsE 'supergfxctl|pseudofractal|Theme\.base|continuation of' README.md plugin.json; then
     echo "stale terminology found in README.md or plugin.json" >&2
     exit 1
 fi
 
-# Stale screenshot removed.
-test ! -e assets/popup.png
+# Screenshot is present and referenced by the README.
+test -f assets/popup.png
+grep -q 'assets/popup.png' README.md
