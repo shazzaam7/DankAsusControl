@@ -96,6 +96,10 @@ hasnt 'resetArmoury("nv_base_tgp"' || fail 'nv_base_tgp must never be reset'
 
 # --- Profile tuning gate ---
 has 'setTuning(true)' || fail 'Enable profile tuning button missing'
+has 'fanCurveGateBlocked' || fail 'widget must derive the asusd fan-curve prerequisite state'
+has 'Enable fan curve & tuning' || fail 'explicit fan-curve + tuning fix button missing'
+has 'ctl.enableTuningWithFanCurve()' || fail 'fix button must call the controller gate fix'
+has 'ctl.refreshFanCurveGate()' || fail 'gate must be refreshed when the popout/tuning tab opens'
 has 'ctl.state.tuningEnabled && sliderRow.adjustable' || fail 'PPT sliders must be gated on tuningEnabled and a usable range'
 has 'readonly property bool adjustable' || fail 'slider must detect attributes with no adjustable range'
 has 'No adjustable range in the current power state.' || fail 'no-range explanation missing'

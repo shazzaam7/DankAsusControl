@@ -68,7 +68,7 @@ Use the slider to set the maximum charge level. **One-shot charging** temporaril
 
 Tuning sliders appear when your device exposes the corresponding asusctl attributes. Each has a **default** button to reset it to `-1`.
 
-> Profile tuning must be enabled for the current profile/power state before PPT (CPU/NVIDIA) values can be written. When tuning is off, the sliders are disabled and an **Enable profile tuning** button is shown — the plugin never enables it silently. This is a system-level change (EPP/fan behavior), so enable it deliberately.
+> Profile tuning must be enabled for the current profile/power state before PPT (CPU/NVIDIA) values can be written. asusd also requires an active custom fan curve for that profile: if none is enabled, the **Enable profile tuning** button is replaced with **Enable fan curve & tuning**, which enables a custom fan curve and then tuning in one deliberate action. When a fan curve is already active, the plain **Enable profile tuning** button is shown. The plugin never enables tuning silently — these are system-level changes (EPP/fan behavior), so enable them deliberately.
 
 ### Keyboard backlight
 

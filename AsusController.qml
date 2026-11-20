@@ -86,7 +86,10 @@ QtObject {
                 asusctlVersion: "",
                 nvidiaPowerdDisabled: false,
                 aura: null,
-                fanCurves: null
+                fanCurves: null,
+                // null = not yet known, true = tuning is unlocked, false = asusd
+                // requires an active custom fan curve and none is enabled.
+                fanCurveGate: null
             })
         }
 
@@ -371,12 +374,49 @@ QtObject {
 
     function setTuning(on) {
         var desired = !!on;
+        if (!desired) {
+            root.writeTuning(false);
+            return;
+        }
+        // Re-read the gate at click time. asusd checks the profile that is
+        // active *now*, so a cached profile name must never decide this.
+        root.readFanCurveGate(function(gate) {
+            if (gate === false) {
+                ToastService.showError("ASUS Control",
+                    "Enable a custom fan curve for " + (root.state.activeProfile || "the active profile")
+                    + " first (Tuning → Fans)");
+                return;
+            }
+            root.writeTuning(true);
+        });
+    }
+
+    function writeTuning(desired) {
         var flag = desired ? "true" : "false";
         var script = "printf '@@SET@@\\n'; asusctl profile tuning " + flag + " 2>&1" +
                      "; printf '@@GET@@\\n'; asusctl profile tuning";
         root.runWrite("dankAsusControlCenter.setTuning", script, function(stdout) {
             var sections = Asusctl.parseSections(stdout);
             return Asusctl.parseTuning(sections["GET"]) === desired;
+        });
+    }
+
+    // Deliberate one-click fix: enable all custom fan curves for the active
+    // profile, then enable profile tuning. asusd requires the curve first, so
+    // both commands run in one script and are verified by re-reading tuning.
+    // The profile is resolved inside the script so the cached state (which may
+    // lag a power-source switch) can never target the wrong profile.
+    function enableTuningWithFanCurve() {
+        var script = "P=$(asusctl profile get | sed -n 's/^Active profile: *//p')"
+            + "; [ -n \"$P\" ] || P=Balanced"
+            + "; printf '@@FC@@\\n'; asusctl fan-curve --mod-profile \"$P\" --enable-fan-curves true 2>&1"
+            + "; printf '@@SET@@\\n'; asusctl profile tuning true 2>&1"
+            + "; printf '@@GET@@\\n'; asusctl profile tuning";
+        root.runWrite("dankAsusControlCenter.enableTuningWithFanCurve", script, function(stdout) {
+            var sections = Asusctl.parseSections(stdout);
+            var ok = Asusctl.parseTuning(sections["GET"]) === true;
+            if (ok) root.publish("fanCurveGate", true);
+            return ok;
         });
     }
     // ------------------------------------------------------------------
@@ -549,11 +589,38 @@ QtObject {
     // ------------------------------------------------------------------
     // Fan curves (CLI read/write, per profile and fan)
     // ------------------------------------------------------------------
+    // asusd refuses to enable profile tuning unless at least one custom fan
+    // curve is enabled for the profile that is active right now. `--get-enabled`
+    // reads exactly that profile, so a cached or stale profile name can never
+    // unlock the gate for the wrong one. Devices without fan-curve support are
+    // left unlocked because asusd does not apply the requirement there.
+    function readFanCurveGate(callback) {
+        Proc.runCommand("dankAsusControlCenter.fanCurveGate", ["sh", "-c", "asusctl fan-curve --get-enabled"], function(stdout) {
+            var text = String(stdout == null ? "" : stdout);
+            var gate;
+            if (/Fan-?curves not supported|NotSupported/i.test(text)) gate = true;
+            else if (/enabled:\s*(true|false)/i.test(text)) gate = /enabled:\s*true/i.test(text);
+            else gate = null;
+            root.publish("fanCurveGate", gate);
+            if (callback) callback(gate);
+        }, 50, undefined, root);
+    }
+
+    function refreshFanCurveGate() {
+        root.readFanCurveGate();
+    }
+
     function refreshFanCurves(profile) {
         var p = profile || "Balanced";
         Proc.runCommand("dankAsusControlCenter.refreshFanCurves", ["sh", "-c", "asusctl fan-curve --mod-profile " + root.quote(p)], function(stdout) {
             var parsed = Asusctl.parseFanCurves(stdout);
-            if (parsed && parsed.profile && parsed.fans.length) root.publish("fanCurves", parsed);
+            if (parsed && parsed.profile && parsed.fans.length) {
+                root.publish("fanCurves", parsed);
+                // Keep the tuning gate in sync when a curve is enabled/disabled
+                // or applied from the Fans tab for the currently active profile.
+                if (String(p).toLowerCase() === String(root.state.activeProfile || "").toLowerCase())
+                    root.readFanCurveGate();
+            }
         }, 50, undefined, root);
     }
 

@@ -140,6 +140,22 @@ ShellRoot {
             check("gate.visible.partialAttrs", gate !== null && gate.visible === true, gate ? String(gate.visible) + " h=" + gate.height : "missing");
             var cpu = section(pop, "CPU Power Limits");
             check("cpu.visible.partialAttrs", cpu !== null && cpu.visible === true);
+
+            // asusd requires an active custom fan curve before tuning; the UI
+            // must offer the explicit fix instead of a guaranteed-failing write.
+            var enableTuningBtn = button(pop, "Enable profile tuning");
+            var fixBtn = button(pop, "Enable fan curve & tuning");
+            ctl.publish("fanCurveGate", false);
+            check("tuningGate.blocked.normalHidden", enableTuningBtn !== null
+                && effectivelyVisible(enableTuningBtn) === false);
+            check("tuningGate.blocked.fixVisible", fixBtn !== null
+                && effectivelyVisible(fixBtn) === true);
+            ctl.publish("fanCurveGate", true);
+            check("tuningGate.unlocked.normalVisible", enableTuningBtn !== null
+                && effectivelyVisible(enableTuningBtn) === true);
+            check("tuningGate.unlocked.fixHidden", fixBtn !== null
+                && effectivelyVisible(fixBtn) === false);
+
             widget.tuningTabIndex = 1;
             var nvidia = section(pop, "NVIDIA Power");
             check("nvidia.visible.partialAttrs", nvidia !== null && nvidia.visible === true);

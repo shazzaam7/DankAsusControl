@@ -238,6 +238,86 @@ ShellRoot {
             obj.resetFanCurves("Balanced");
             check("fanCurve.resetScript", Proc.commands[0].script.indexOf("--default") !== -1, Proc.commands[0].script);
 
+            // --- Profile tuning gate: asusd requires an active custom fan curve ---
+            // The gate must read the ACTIVE profile's curves. `--get-enabled`
+            // does that regardless of any cached profile name.
+            var gateOff = "CPU: enabled: false, 60c:0%,63c:4%\nGPU: enabled: false, 53c:0%\n";
+            var gateOn = "CPU: enabled: true, 60c:0%,63c:4%\nGPU: enabled: false, 53c:0%\n";
+
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.fanCurveGate": gateOff };
+            obj.refreshFanCurveGate();
+            check("tuningGate.off", obj.state.fanCurveGate === false, String(obj.state.fanCurveGate));
+            check("tuningGate.readActive", Proc.commands[0].script.indexOf("--get-enabled") !== -1,
+                Proc.commands[0].script);
+            check("tuningGate.noCachedProfile", Proc.commands[0].script.indexOf("--mod-profile") === -1,
+                Proc.commands[0].script);
+
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.fanCurveGate": gateOn };
+            obj.refreshFanCurveGate();
+            check("tuningGate.on", obj.state.fanCurveGate === true, String(obj.state.fanCurveGate));
+
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.fanCurveGate": "Fan-curves not supported by either this kernel or by the laptop\n" };
+            obj.refreshFanCurveGate();
+            check("tuningGate.unsupported", obj.state.fanCurveGate === true, String(obj.state.fanCurveGate));
+
+            // Blocked gate: re-read at click time, never issue the doomed write.
+            obj.publish("fanCurveGate", false);
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.fanCurveGate": gateOff };
+            ToastService.errors = [];
+            obj.setTuning(true);
+            check("tuningGate.veto.noWrite", ids(Proc.commands).indexOf("dankAsusControlCenter.setTuning") === -1, ids(Proc.commands));
+            check("tuningGate.veto.freshRead", ids(Proc.commands).indexOf("dankAsusControlCenter.fanCurveGate") !== -1, ids(Proc.commands));
+            check("tuningGate.veto.toast", ToastService.errors.length === 1
+                && /fan curve/i.test(ToastService.errors[0]), ToastService.errors.join("|"));
+
+            // Regression: cached profile/gate said unlocked (e.g. Balanced has
+            // an enabled curve) but the live active profile (Quiet) has none.
+            // The click-time read must veto even when the cached gate was true.
+            obj.publish("activeProfile", "Balanced");
+            obj.publish("fanCurveGate", true);
+            Proc.commands = [];
+            Proc.outputs = { "dankAsusControlCenter.fanCurveGate": gateOff };
+            ToastService.errors = [];
+            obj.setTuning(true);
+            check("tuningGate.staleProfile.veto", ids(Proc.commands).indexOf("dankAsusControlCenter.setTuning") === -1, ids(Proc.commands));
+            check("tuningGate.staleProfile.state", obj.state.fanCurveGate === false, String(obj.state.fanCurveGate));
+            check("tuningGate.staleProfile.toast", ToastService.errors.length === 1
+                && /fan curve/i.test(ToastService.errors[0]), ToastService.errors.join("|"));
+
+            // Unlocked gate: the normal write path still works.
+            obj.publish("fanCurveGate", true);
+            Proc.commands = [];
+            Proc.outputs = {
+                "dankAsusControlCenter.fanCurveGate": gateOn,
+                "dankAsusControlCenter.setTuning": "@@SET@@\nOK\n@@GET@@\nProfile tuning: true\n"
+            };
+            ToastService.errors = [];
+            obj.setTuning(true);
+            check("tuningGate.unlocked.command", ids(Proc.commands).indexOf("dankAsusControlCenter.setTuning") !== -1, ids(Proc.commands));
+            check("tuningGate.unlocked.noError", ToastService.errors.length === 0, ToastService.errors.join("|"));
+
+            // One-click fix: enable a custom fan curve first, then tuning.
+            obj.publish("fanCurveGate", false);
+            Proc.commands = [];
+            Proc.outputs = {
+                "dankAsusControlCenter.enableTuningWithFanCurve": "@@FC@@\nOK\n@@SET@@\nOK\n@@GET@@\nProfile tuning: true\n"
+            };
+            ToastService.errors = [];
+            obj.enableTuningWithFanCurve();
+            check("tuningGate.fix.command", Proc.commands.length > 0
+                && Proc.commands[0].id === "dankAsusControlCenter.enableTuningWithFanCurve", ids(Proc.commands));
+            var fixScript = Proc.commands.length ? Proc.commands[0].script : "";
+            check("tuningGate.fix.order", fixScript.indexOf("--enable-fan-curves true") !== -1
+                && fixScript.indexOf("profile tuning true") !== -1
+                && fixScript.indexOf("--enable-fan-curves true") < fixScript.indexOf("profile tuning true"), fixScript);
+            check("tuningGate.fix.activeProfile", fixScript.indexOf("asusctl profile get") !== -1, fixScript);
+            check("tuningGate.fix.unlocked", obj.state.fanCurveGate === true, String(obj.state.fanCurveGate));
+            check("tuningGate.fix.noError", ToastService.errors.length === 0, ToastService.errors.join("|"));
+
             // Unparseable info output leaves both defaults empty.
             Proc.outputs = {
                 "dankAsusControlCenter.info": "sh: asusctl: not found\n",

@@ -24,8 +24,10 @@ PluginComponent {
     Connections {
         target: root
         function onInteractionActiveChanged() {
-            if (root.interactionActive)
+            if (root.interactionActive) {
                 ctl.refresh();
+                ctl.refreshFanCurveGate();
+            }
         }
     }
 
@@ -50,6 +52,9 @@ PluginComponent {
 
     readonly property bool showBatteryIcon: pluginData?.showBatteryIcon === true
     readonly property bool hasAsusData: ctl.state.activeProfile !== null && ctl.state.activeProfile !== undefined
+    // asusd will reject "profile tuning true" until a custom fan curve is
+    // active for the current profile. Only block when that is known to be true.
+    readonly property bool fanCurveGateBlocked: ctl.state.fanCurveGate === false
 
     // Views over the shared armoury map, reused by the tuning gate and both
     // power sections so they can never disagree about which attributes exist.
@@ -508,8 +513,10 @@ PluginComponent {
                             if (root.currentTab === "keys") {
                                 ctl.refreshAura();
                                 root.syncAuraDraft();
-                            } else if (root.currentTab === "tuning" && root.tuningTabIndex === 2) {
-                                ctl.refreshFanCurves(root.fanProfile);
+                            } else if (root.currentTab === "tuning") {
+                                ctl.refreshFanCurveGate();
+                                if (root.tuningTabIndex === 2)
+                                    ctl.refreshFanCurves(root.fanProfile);
                             }
                         }
                     }
@@ -826,16 +833,30 @@ PluginComponent {
 
                                             Section {
                                                 title: "Profile Tuning"
-                                                note: "CPU power limits can only be changed while profile tuning is enabled."
+                                                note: root.fanCurveGateBlocked
+                                                    ? "asusd requires an active custom fan curve for "
+                                                      + (ctl.state.activeProfile || "the active profile")
+                                                      + " before profile tuning can be enabled."
+                                                    : "CPU power limits can only be changed while profile tuning is enabled."
                                                 visible: !ctl.state.tuningEnabled
 
                                                 DButton {
+                                                    visible: !root.fanCurveGateBlocked
                                                     text: "Enable profile tuning"
                                                     iconName: "tune"
                                                     variant: "filled"
                                                     backgroundColor: Theme.primary
                                                     textColor: Theme.onPrimary
                                                     onClicked: ctl.setTuning(true)
+                                                }
+                                                DButton {
+                                                    visible: root.fanCurveGateBlocked
+                                                    text: "Enable fan curve & tuning"
+                                                    iconName: "tune"
+                                                    variant: "filled"
+                                                    backgroundColor: Theme.primary
+                                                    textColor: Theme.onPrimary
+                                                    onClicked: ctl.enableTuningWithFanCurve()
                                                 }
                                             }
 

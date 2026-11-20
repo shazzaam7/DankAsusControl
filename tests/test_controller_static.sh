@@ -32,7 +32,8 @@ has 'varName: "asusState"' || fail 'varName missing'
 for fn in publish refresh refreshProfile hasAttr attr setProfile cycleProfile \
           setGpuMode setBatteryLimit oneShot setArmoury resetArmoury setLeds setTuning \
           refreshAura setNvidiaPowerd setAuraEffect setAuraBrightness setAuraPower \
-          refreshFanCurves setFanCurve setFanCurveEnabled resetFanCurves; do
+          refreshFanCurves setFanCurve setFanCurveEnabled resetFanCurves \
+          readFanCurveGate refreshFanCurveGate writeTuning enableTuningWithFanCurve; do
     has "function $fn(" || fail "missing function $fn()"
 done
 has 'function probeInfo(' || fail 'probeInfo() missing'
@@ -43,7 +44,26 @@ has 'busctl --system' || fail 'busctl usage missing'
 has 'set-property' || fail 'busctl set-property usage missing'
 has 'fanCurveData' || fail 'fanCurveData helper missing'
 has 'nvidiaPowerdDisabled' || fail 'nvidia-powerd shared state missing'
-has 'fanCurves' || fail 'fan-curve shared state missing' 
+has 'fanCurves' || fail 'fan-curve shared state missing'
+has 'fanCurveGate: null' || fail 'tuning fan-curve gate state missing'
+
+# --- Profile-tuning gate: asusd requires an active custom fan curve ---
+TUNING_FN=$(extract_fn 'function setTuning(')
+in_block "$TUNING_FN" 'readFanCurveGate(' || fail 'setTuning must re-read the gate at click time'
+in_block "$TUNING_FN" 'gate === false' || fail 'setTuning must veto a write when no custom fan curve is active'
+in_block "$TUNING_FN" 'writeTuning(true)' || fail 'setTuning must delegate the write only after the gate passes'
+GATE_FIX_FN=$(extract_fn 'function enableTuningWithFanCurve(')
+in_block "$GATE_FIX_FN" '--enable-fan-curves true' || fail 'gate fix must enable a custom fan curve'
+in_block "$GATE_FIX_FN" 'profile tuning true' || fail 'gate fix must enable profile tuning'
+in_block "$GATE_FIX_FN" 'asusctl profile get' || fail 'gate fix must resolve the live active profile'
+in_block "$GATE_FIX_FN" 'publish("fanCurveGate", true)' || fail 'gate fix must unlock the gate after success'
+GATE_READ_FN=$(extract_fn 'function readFanCurveGate(')
+in_block "$GATE_READ_FN" 'dankAsusControlCenter.fanCurveGate' || fail 'gate read command id missing'
+in_block "$GATE_READ_FN" '--get-enabled' || fail 'gate read must use the active profile curves'
+not_in_block "$GATE_READ_FN" '--mod-profile' || fail 'gate read must not depend on a cached profile name'
+in_block "$GATE_READ_FN" 'not supported' || fail 'gate read must leave unsupported devices unlocked'
+FC_FN=$(extract_fn 'function refreshFanCurves(')
+in_block "$FC_FN" 'readFanCurveGate()' || fail 'fan-curve refresh must keep the gate in sync'
 
 # Refresh plus the distinct write helpers must issue real commands.
 COUNT=$(grep -oF 'Proc.runCommand(' <<<"$BODY" | wc -l)
