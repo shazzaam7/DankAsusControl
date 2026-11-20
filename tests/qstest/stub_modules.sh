@@ -144,7 +144,7 @@ Item {
 }
 EOF
 
-printf 'module qs.DCommon.Widgets\nDIcon 1.0 DIcon.qml\nStyledText 1.0 StyledText.qml\nStyledRect 1.0 StyledRect.qml\nDSlider 1.0 DSlider.qml\nDButton 1.0 DButton.qml\nDIconButton 1.0 DIconButton.qml\nDCollapsibleSection 1.0 DCollapsibleSection.qml\nDFlickable 1.0 DFlickable.qml\nDTabBar 1.0 DTabBar.qml\n' > "$STAGE/qs/DCommon/Widgets/qmldir"
+printf 'module qs.DCommon.Widgets\nDIcon 1.0 DIcon.qml\nStyledText 1.0 StyledText.qml\nStyledRect 1.0 StyledRect.qml\nDSlider 1.0 DSlider.qml\nDButton 1.0 DButton.qml\nDIconButton 1.0 DIconButton.qml\nDCollapsibleSection 1.0 DCollapsibleSection.qml\nDFlickable 1.0 DFlickable.qml\nDTabBar 1.0 DTabBar.qml\nDColorButton 1.0 DColorButton.qml\nDTextField 1.0 DTextField.qml\nDToggle 1.0 DToggle.qml\n' > "$STAGE/qs/DCommon/Widgets/qmldir"
 cat > "$STAGE/qs/DCommon/Widgets/DIcon.qml" <<'EOF'
 import QtQuick
 Item { property alias name: t.text; property alias size: t.font.pixelSize; property alias color: t.color; Text { id: t } }
@@ -197,6 +197,34 @@ Item {
     property bool equalWidthTabs: true
     property int spacing: 0
     signal tabClicked(int index)
+}
+EOF
+cat > "$STAGE/qs/DCommon/Widgets/DColorButton.qml" <<'EOF'
+import QtQuick
+Item {
+    property color swatchColor: "transparent"
+    property bool selected: false
+    signal clicked()
+}
+EOF
+cat > "$STAGE/qs/DCommon/Widgets/DTextField.qml" <<'EOF'
+import QtQuick
+Item {
+    property alias text: input.text
+    property string placeholderText: ""
+    property int maximumLength: 32767
+    property var validator: null
+    signal editingFinished()
+    TextInput { id: input }
+}
+EOF
+cat > "$STAGE/qs/DCommon/Widgets/DToggle.qml" <<'EOF'
+import QtQuick
+Item {
+    property bool checked: false
+    property string text: ""
+    property string description: ""
+    signal toggled(bool checked)
 }
 EOF
 

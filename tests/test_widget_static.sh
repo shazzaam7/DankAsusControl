@@ -99,7 +99,6 @@ has 'setTuning(true)' || fail 'Enable profile tuning button missing'
 has 'ctl.state.tuningEnabled && sliderRow.adjustable' || fail 'PPT sliders must be gated on tuningEnabled and a usable range'
 has 'readonly property bool adjustable' || fail 'slider must detect attributes with no adjustable range'
 has 'No adjustable range in the current power state.' || fail 'no-range explanation missing'
-has 'DCollapsibleSection' || fail 'CPU power limits must use DCollapsibleSection'
 has 'root.hasNvAttrs' || fail 'tuning gate must recognise all nv_* attributes'
 has 'root.hasPptAttrs' || fail 'tuning gate must recognise all ppt_* attributes'
 has 'root.hasNvAttrs || root.hasPptAttrs' || fail 'tuning gate must cover both power sections'
@@ -107,7 +106,7 @@ for attr in nv_tgp nv_dynamic_boost nv_temp_target ppt_pl1_spl ppt_pl2_sppt ppt_
     has "ctl.hasAttr(\"$attr\")" || fail "tuning gate must detect $attr"
 done
 
-# --- Review fixes: selection styling, header badge, pills, sizing ---
+# --- Selection styling, header badge, pills, sizing ---
 has 'selected ? root.profileColor(modelData) : "transparent"' || fail 'unselected profile chips must have transparent fill'
 has 'active ? root.colorGpu : "transparent"' || fail 'unselected GPU chips must have transparent fill'
 has 'Theme.primary : "transparent"' || fail 'unselected keyboard/toggle buttons must have transparent fill'
@@ -150,11 +149,22 @@ hasnt 'import "../' || fail 'plugin-root QML must not import from a parent direc
 has 'import "asusctl.js" as Asusctl' || fail 'asusctl.js must be imported from the plugin directory'
 hasnt 'popoutService' || fail 'dead popoutService property must be removed'
 
-# --- CPU advanced section sizing (ColumnLayout needs Layout.fillWidth) ---
-has 'import QtQuick.Layouts' || fail 'QtQuick.Layouts import missing for Layout.fillWidth'
-CPU_SECTION=$(awk 'index($0,"DCollapsibleSection {"){f=1} f{print} f && /^[[:space:]]*\}/{exit}' <<<"$BODY")
-in_block "$CPU_SECTION" 'width: parent.width' || fail 'CPU section itself must have width: parent.width'
-in_block "$CPU_SECTION" 'Layout.fillWidth: true' || fail 'inner CPU column must use Layout.fillWidth'
+# --- Tuning nested tabs + new feature wiring ---
+has 'model: [{ "text": "CPU" }, { "text": "GPU" }, { "text": "Fans" }]' || fail 'tuning nested tabs missing'
+has 'title: "Fan Curve"' || fail 'fan curve editor missing'
+has 'ctl.setFanCurve(' || fail 'fan curve apply missing'
+has 'ctl.setFanCurveEnabled(' || fail 'fan curve enable missing'
+has 'ctl.resetFanCurves(' || fail 'fan curve reset missing'
+has 'title: "Aura Lighting"' || fail 'Aura section missing'
+has 'ctl.setAuraEffect(' || fail 'Aura effect write missing'
+has 'ctl.setAuraBrightness(' || fail 'Aura brightness write missing'
+has 'ctl.setAuraPower(' || fail 'Aura power write missing'
+has 'ctl.setNvidiaPowerd(' || fail 'nvidia-powerd toggle missing'
+has 'root.auraModeInfo.colours >= 1' || fail 'Aura colour 1 visibility missing'
+has 'root.auraModeInfo.colours >= 2' || fail 'Aura colour 2 visibility missing'
+has 'root.auraModeInfo.speed' || fail 'Aura speed visibility missing'
+has 'root.auraModeInfo.direction' || fail 'Aura direction visibility missing'
+has '(ctl.state.aura.supportedZones || []).length > 1' || fail 'Aura zone must hide when unsupported'
 
 # --- GPU in-flight guard disables the buttons while a switch is queued ---
 has 'enabled: !ctl.gpuInFlight' || fail 'GPU buttons must be disabled while a switch is in flight'

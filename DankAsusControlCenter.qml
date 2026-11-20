@@ -38,6 +38,16 @@ PluginComponent {
         }
     }
 
+    Connections {
+        target: ctl
+        function onStateChanged() {
+            if (root.currentTab === "keys" && !root.auraDraftDirty)
+                root.syncAuraDraft();
+            if (root.currentTab === "tuning" && root.tuningTabIndex === 2 && !root.fanDraftDirty)
+                root.syncFanDraft();
+        }
+    }
+
     readonly property bool showBatteryIcon: pluginData?.showBatteryIcon === true
     readonly property bool hasAsusData: ctl.state.activeProfile !== null && ctl.state.activeProfile !== undefined
 
@@ -60,6 +70,94 @@ PluginComponent {
     property int tabIndex: 0
     readonly property string currentTab: tabKeys[Math.max(0, Math.min(tabIndex, tabKeys.length - 1))] || "power"
     readonly property int tabStackIndex: Math.max(0, tabKeys.indexOf(currentTab))
+
+    // --- Aura draft (Keys tab) ---
+    property string auraMode: ""
+    property string auraColour1: "ffffff"
+    property string auraColour2: "000000"
+    property string auraSpeed: "Med"
+    property string auraDirection: "Right"
+    property int auraZone: 0
+    property bool auraDraftDirty: false
+    readonly property var auraPresets: ["ff0000", "00ff00", "0000ff", "a020f0", "ff8000", "ffffff", "000000"]
+    readonly property var auraModeInfo: Asusctl.auraModeByName(auraMode)
+
+    function syncAuraDraft() {
+        var aura = ctl.state.aura;
+        if (!aura) return;
+        if (aura.modeName) auraMode = aura.modeName;
+        auraColour1 = aura.colour1 || "ffffff";
+        auraColour2 = aura.colour2 || "000000";
+        auraSpeed = aura.speed || "Med";
+        auraDirection = aura.direction || "Right";
+        auraZone = aura.data ? aura.data.zone : 0;
+        auraDraftDirty = false;
+    }
+
+    function auraPowerValue(zone, key) {
+        var aura = ctl.state.aura;
+        if (!aura || !aura.power) return false;
+        for (var i = 0; i < aura.power.length; ++i)
+            if (aura.power[i].zone === zone) return aura.power[i][key] === true;
+        return false;
+    }
+
+    // --- Fan curve draft (Tuning > Fans) ---
+    property int tuningTabIndex: 0
+    readonly property var tuningTabKeys: ["cpu", "gpu", "fans"]
+    property string fanProfile: "Balanced"
+    property string fanName: "CPU"
+    property var fanDraft: []
+    property bool fanDraftDirty: false
+
+    function pwmToPercent(value) {
+        return Math.round(Number(value) / 255 * 100);
+    }
+
+    function syncFanDraft() {
+        var curves = ctl.state.fanCurves;
+        if (!curves || curves.profile !== fanProfile) return;
+        var fan = null;
+        for (var i = 0; i < curves.fans.length; ++i)
+            if (curves.fans[i].fan.toLowerCase() === fanName.toLowerCase()) fan = curves.fans[i];
+        if (!fan) return;
+        var draft = [];
+        for (var j = 0; j < fan.temp.length; ++j)
+            draft.push({ temp: fan.temp[j], pwm: pwmToPercent(fan.pwm[j]) });
+        fanDraft = draft;
+        fanDraftDirty = false;
+    }
+
+    function fanEnabled() {
+        var curves = ctl.state.fanCurves;
+        if (!curves || curves.profile !== fanProfile) return false;
+        for (var i = 0; i < curves.fans.length; ++i)
+            if (curves.fans[i].fan.toLowerCase() === fanName.toLowerCase()) return curves.fans[i].enabled === true;
+        return false;
+    }
+
+    function selectFanProfile(profile) {
+        fanProfile = profile;
+        fanDraftDirty = false;
+        ctl.refreshFanCurves(profile);
+        Qt.callLater(root.syncFanDraft);
+    }
+
+    function selectFan(name) {
+        fanName = name;
+        fanDraftDirty = false;
+        Qt.callLater(root.syncFanDraft);
+    }
+
+    function updateFanPoint(index, key, value) {
+        var number = parseInt(value, 10);
+        if (isNaN(number)) return;
+        var draft = fanDraft.slice();
+        if (!draft[index]) draft[index] = { temp: 20, pwm: 0 };
+        draft[index][key] = number;
+        fanDraft = draft;
+        fanDraftDirty = true;
+    }
 
     readonly property bool useThemeColors: pluginData?.useThemeColors !== false
     readonly property color colorPerf: useThemeColors ? (Theme[pluginData?.colorPerfRole || "primary"] ?? Theme.primary) : (pluginData?.colorPerf || "#F38BA8")
@@ -405,7 +503,15 @@ PluginComponent {
                         spacing: Theme.spacingXS
                         model: root.tabDefs.map(t => ({ "text": t.text }))
                         currentIndex: root.tabIndex
-                        onTabClicked: index => root.tabIndex = index
+                        onTabClicked: index => {
+                            root.tabIndex = index;
+                            if (root.currentTab === "keys") {
+                                ctl.refreshAura();
+                                root.syncAuraDraft();
+                            } else if (root.currentTab === "tuning" && root.tuningTabIndex === 2) {
+                                ctl.refreshFanCurves(root.fanProfile);
+                            }
+                        }
                     }
 
                     StackLayout {
@@ -648,19 +754,32 @@ PluginComponent {
                                         }
                                     }
                                 }
+
+                                Section {
+                                    title: "NVIDIA powerd"
+                                    note: "asusd stops nvidia-powerd while on battery when this is enabled."
+                                    visible: root.hasAsusData
+
+                                    DToggle {
+                                        width: parent.width
+                                        text: "Disable on battery"
+                                        description: "Stop nvidia-powerd while running on battery"
+                                        checked: ctl.state.nvidiaPowerdDisabled
+                                        onToggled: checked => ctl.setNvidiaPowerd(checked)
+                                    }
+                                }
                             }
                         }
 
-                        // --- Tuning: NVIDIA + CPU power limits ---
-                        Flickable {
-                            contentWidth: width
-                            contentHeight: tuningCol.implicitHeight + Theme.spacingM
-                            clip: true
-
+                        // --- Tuning: nested CPU / GPU / Fans tabs ---
+                        Item {
                             Column {
-                                id: tuningCol
+                                id: tuningTabs
                                 width: parent.width
-                                spacing: Theme.spacingM
+                                height: parent.height
+                                spacing: Theme.spacingS
+
+                                readonly property bool anyTuning: root.hasNvAttrs || root.hasPptAttrs
 
                                 StyledText {
                                     width: parent.width
@@ -668,85 +787,251 @@ PluginComponent {
                                     font.pixelSize: Theme.fontSizeSmall
                                     color: Theme.surfaceVariantText
                                     wrapMode: Text.WordWrap
-                                    visible: !(root.hasNvAttrs || root.hasPptAttrs)
+                                    visible: !tuningTabs.anyTuning
                                 }
 
-                                Section {
-                                    title: "Profile Tuning"
-                                    note: "NVIDIA and CPU power limits can only be changed while profile tuning is enabled."
-                                    visible: root.hasAsusData && (root.hasNvAttrs || root.hasPptAttrs) && !ctl.state.tuningEnabled
-
-                                    DButton {
-                                        text: "Enable profile tuning"
-                                        iconName: "tune"
-                                        variant: "filled"
-                                        backgroundColor: Theme.primary
-                                        textColor: Theme.onPrimary
-                                        onClicked: ctl.setTuning(true)
-                                    }
-                                }
-
-                                Divider { visible: root.hasAsusData && root.hasNvAttrs }
-
-                                Section {
-                                    title: "NVIDIA Power"
-                                    note: "Values apply only while profile tuning is enabled."
-                                    visible: root.hasAsusData && root.hasNvAttrs
-
-                                    AttrSlider {
-                                        attrName: "nv_tgp"
-                                        label: "TGP"
-                                        visible: ctl.hasAttr("nv_tgp")
-                                    }
-                                    StyledText {
-                                        width: parent.width
-                                        text: "Base TGP (firmware-reported): " + (root.attrValue("nv_base_tgp") ?? "unknown")
-                                        font.pixelSize: Theme.fontSizeSmall
-                                        color: Theme.surfaceVariantText
-                                        visible: ctl.hasAttr("nv_base_tgp")
-                                    }
-                                    AttrSlider {
-                                        attrName: "nv_dynamic_boost"
-                                        label: "Dynamic Boost"
-                                        visible: ctl.hasAttr("nv_dynamic_boost")
-                                    }
-                                    AttrSlider {
-                                        attrName: "nv_temp_target"
-                                        label: "Temperature Target"
-                                        visible: ctl.hasAttr("nv_temp_target")
-                                    }
-                                }
-
-                                DCollapsibleSection {
+                                DTabBar {
+                                    id: tuningTabBar
                                     width: parent.width
-                                    title: "CPU Power Limits (advanced)"
-                                    description: "Package and turbo power limits. Requires profile tuning."
-                                    visible: root.hasAsusData && root.hasPptAttrs
+                                    visible: tuningTabs.anyTuning
+                                    tabHeight: 34
+                                    showIcons: false
+                                    equalWidthTabs: true
+                                    spacing: Theme.spacingXS
+                                    model: [{ "text": "CPU" }, { "text": "GPU" }, { "text": "Fans" }]
+                                    currentIndex: root.tuningTabIndex
+                                    onTabClicked: index => {
+                                        root.tuningTabIndex = index;
+                                        if (index === 2)
+                                            ctl.refreshFanCurves(root.fanProfile);
+                                    }
+                                }
 
-                                    Column {
-                                        Layout.fillWidth: true
-                                        spacing: Theme.spacingS
-                                        AttrSlider {
-                                            attrName: "ppt_pl1_spl"
-                                            label: "PL1 (sustained)"
-                                            visible: ctl.hasAttr("ppt_pl1_spl")
+                                StackLayout {
+                                    width: parent.width
+                                    height: parent.height - (tuningTabBar.visible ? tuningTabBar.height + Theme.spacingS : 0)
+                                    visible: tuningTabs.anyTuning
+                                    currentIndex: root.tuningTabIndex
+
+                                    // CPU
+                                    Flickable {
+                                        contentWidth: width
+                                        contentHeight: cpuCol.implicitHeight + Theme.spacingM
+                                        clip: true
+
+                                        Column {
+                                            id: cpuCol
+                                            width: parent.width
+                                            spacing: Theme.spacingM
+
+                                            Section {
+                                                title: "Profile Tuning"
+                                                note: "CPU power limits can only be changed while profile tuning is enabled."
+                                                visible: !ctl.state.tuningEnabled
+
+                                                DButton {
+                                                    text: "Enable profile tuning"
+                                                    iconName: "tune"
+                                                    variant: "filled"
+                                                    backgroundColor: Theme.primary
+                                                    textColor: Theme.onPrimary
+                                                    onClicked: ctl.setTuning(true)
+                                                }
+                                            }
+
+                                            Section {
+                                                title: "CPU Power Limits"
+                                                note: "Package and turbo power limits."
+                                                visible: root.hasPptAttrs
+
+                                                AttrSlider {
+                                                    attrName: "ppt_pl1_spl"
+                                                    label: "PL1 (sustained)"
+                                                    visible: ctl.hasAttr("ppt_pl1_spl")
+                                                }
+                                                AttrSlider {
+                                                    attrName: "ppt_pl2_sppt"
+                                                    label: "PL2 (burst)"
+                                                    visible: ctl.hasAttr("ppt_pl2_sppt")
+                                                }
+                                                AttrSlider {
+                                                    attrName: "ppt_pl3_fppt"
+                                                    label: "PL3 (peak)"
+                                                    visible: ctl.hasAttr("ppt_pl3_fppt")
+                                                }
+                                            }
                                         }
-                                        AttrSlider {
-                                            attrName: "ppt_pl2_sppt"
-                                            label: "PL2 (burst)"
-                                            visible: ctl.hasAttr("ppt_pl2_sppt")
+                                    }
+
+                                    // GPU
+                                    Flickable {
+                                        contentWidth: width
+                                        contentHeight: gpuTuneCol.implicitHeight + Theme.spacingM
+                                        clip: true
+
+                                        Column {
+                                            id: gpuTuneCol
+                                            width: parent.width
+                                            spacing: Theme.spacingM
+
+                                            Section {
+                                                title: "NVIDIA Power"
+                                                note: "Values apply only while profile tuning is enabled."
+                                                visible: root.hasNvAttrs
+
+                                                AttrSlider {
+                                                    attrName: "nv_tgp"
+                                                    label: "TGP"
+                                                    visible: ctl.hasAttr("nv_tgp")
+                                                }
+                                                StyledText {
+                                                    width: parent.width
+                                                    text: "Base TGP (firmware-reported): " + (root.attrValue("nv_base_tgp") ?? "unknown")
+                                                    font.pixelSize: Theme.fontSizeSmall
+                                                    color: Theme.surfaceVariantText
+                                                    visible: ctl.hasAttr("nv_base_tgp")
+                                                }
+                                                AttrSlider {
+                                                    attrName: "nv_dynamic_boost"
+                                                    label: "Dynamic Boost"
+                                                    visible: ctl.hasAttr("nv_dynamic_boost")
+                                                }
+                                                AttrSlider {
+                                                    attrName: "nv_temp_target"
+                                                    label: "Temperature Target"
+                                                    visible: ctl.hasAttr("nv_temp_target")
+                                                }
+                                            }
                                         }
-                                        AttrSlider {
-                                            attrName: "ppt_pl3_fppt"
-                                            label: "PL3 (peak)"
-                                            visible: ctl.hasAttr("ppt_pl3_fppt")
+                                    }
+
+                                    // Fans
+                                    Flickable {
+                                        contentWidth: width
+                                        contentHeight: fansCol.implicitHeight + Theme.spacingM
+                                        clip: true
+
+                                        Column {
+                                            id: fansCol
+                                            width: parent.width
+                                            spacing: Theme.spacingM
+
+                                            Section {
+                                                title: "Fan Curve"
+                                                note: "8 points per fan; temperatures must increase."
+
+                                                Flow {
+                                                    width: parent.width
+                                                    spacing: Theme.spacingS
+                                                    Repeater {
+                                                        model: ["Quiet", "Balanced", "Performance"]
+                                                        DButton {
+                                                            required property string modelData
+                                                            text: modelData
+                                                            variant: root.fanProfile === modelData ? "filled" : "outlined"
+                                                            backgroundColor: root.fanProfile === modelData ? Theme.primary : "transparent"
+                                                            textColor: root.fanProfile === modelData ? Theme.onPrimary : Theme.primary
+                                                            onClicked: root.selectFanProfile(modelData)
+                                                        }
+                                                    }
+                                                }
+
+                                                Flow {
+                                                    width: parent.width
+                                                    spacing: Theme.spacingS
+                                                    Repeater {
+                                                        model: ctl.state.fanCurves ? ctl.state.fanCurves.fans : []
+                                                        DButton {
+                                                            required property var modelData
+                                                            text: modelData.fan
+                                                            variant: root.fanName.toLowerCase() === modelData.fan.toLowerCase() ? "filled" : "outlined"
+                                                            backgroundColor: root.fanName.toLowerCase() === modelData.fan.toLowerCase() ? Theme.primary : "transparent"
+                                                            textColor: root.fanName.toLowerCase() === modelData.fan.toLowerCase() ? Theme.onPrimary : Theme.primary
+                                                            onClicked: root.selectFan(modelData.fan)
+                                                        }
+                                                    }
+                                                }
+
+                                                DToggle {
+                                                    width: parent.width
+                                                    text: "Enable this fan curve"
+                                                    checked: root.fanEnabled()
+                                                    onToggled: checked => ctl.setFanCurveEnabled(root.fanProfile, root.fanName, checked)
+                                                }
+
+                                                Repeater {
+                                                    model: 8
+                                                    Row {
+                                                        required property int index
+                                                        width: parent.width
+                                                        spacing: Theme.spacingS
+
+                                                        StyledText {
+                                                            width: 66
+                                                            text: "Point " + (index + 1)
+                                                            font.pixelSize: Theme.fontSizeSmall
+                                                            color: Theme.surfaceVariantText
+                                                        }
+                                                        DTextField {
+                                                            width: 92
+                                                            text: root.fanDraft[index] ? String(root.fanDraft[index].temp) : ""
+                                                            placeholderText: "Temp"
+                                                            validator: IntValidator { bottom: 20; top: 100 }
+                                                            onEditingFinished: root.updateFanPoint(index, "temp", text)
+                                                        }
+                                                        StyledText {
+                                                            width: 18
+                                                            text: "°C"
+                                                            font.pixelSize: Theme.fontSizeSmall
+                                                            color: Theme.surfaceVariantText
+                                                        }
+                                                        DTextField {
+                                                            width: 92
+                                                            text: root.fanDraft[index] ? String(root.fanDraft[index].pwm) : ""
+                                                            placeholderText: "PWM"
+                                                            validator: IntValidator { bottom: 0; top: 100 }
+                                                            onEditingFinished: root.updateFanPoint(index, "pwm", text)
+                                                        }
+                                                        StyledText {
+                                                            width: 14
+                                                            text: "%"
+                                                            font.pixelSize: Theme.fontSizeSmall
+                                                            color: Theme.surfaceVariantText
+                                                        }
+                                                    }
+                                                }
+
+                                                Row {
+                                                    spacing: Theme.spacingS
+                                                    DButton {
+                                                        text: "Apply curve"
+                                                        iconName: "check"
+                                                        variant: "filled"
+                                                        backgroundColor: Theme.primary
+                                                        textColor: Theme.onPrimary
+                                                        onClicked: {
+                                                            root.fanDraftDirty = false;
+                                                            ctl.setFanCurve(root.fanProfile, root.fanName, root.fanDraft);
+                                                        }
+                                                    }
+                                                    DButton {
+                                                        text: "Reset to defaults"
+                                                        iconName: "restart_alt"
+                                                        variant: "text"
+                                                        onClicked: {
+                                                            root.fanDraftDirty = false;
+                                                            ctl.resetFanCurves(root.fanProfile);
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // --- Keys: keyboard backlight ---
+                        // --- Keys: keyboard backlight, Aura and power states ---
                         Flickable {
                             contentWidth: width
                             contentHeight: keysCol.implicitHeight + Theme.spacingM
@@ -786,8 +1071,309 @@ PluginComponent {
                                         }
                                     }
                                 }
+
+                                Section {
+                                    title: "Aura Lighting"
+                                    visible: root.hasAsusData && ctl.state.aura !== null && root.auraModeInfo !== null
+
+                                    Flow {
+                                        width: parent.width
+                                        spacing: Theme.spacingS
+                                        Repeater {
+                                            model: ctl.state.aura ? ctl.state.aura.supportedModes : []
+                                            DButton {
+                                                required property var modelData
+                                                text: modelData.name
+                                                variant: root.auraMode === modelData.name ? "filled" : "outlined"
+                                                backgroundColor: root.auraMode === modelData.name ? Theme.primary : "transparent"
+                                                textColor: root.auraMode === modelData.name ? Theme.onPrimary : Theme.primary
+                                                onClicked: {
+                                                    root.auraMode = modelData.name;
+                                                    root.auraDraftDirty = true;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Column {
+                                        width: parent.width
+                                        spacing: Theme.spacingXS
+                                        visible: root.auraModeInfo !== null && root.auraModeInfo.colours >= 1
+
+                                        StyledText {
+                                            width: parent.width
+                                            text: "Colour 1"
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            color: Theme.surfaceVariantText
+                                        }
+                                        Row {
+                                            width: parent.width
+                                            spacing: Theme.spacingS
+                                            DTextField {
+                                                width: parent.width - 44
+                                                text: root.auraColour1
+                                                placeholderText: "RRGGBB"
+                                                maximumLength: 7
+                                                onEditingFinished: {
+                                                    root.auraColour1 = text;
+                                                    root.auraDraftDirty = true;
+                                                }
+                                            }
+                                            Rectangle {
+                                                width: 32
+                                                height: 32
+                                                radius: 16
+                                                color: Asusctl.normaliseHex(root.auraColour1) ? "#" + root.auraColour1 : "transparent"
+                                                border.color: Theme.outline
+                                                border.width: 1
+                                            }
+                                        }
+                                        Row {
+                                            spacing: Theme.spacingXS
+                                            Repeater {
+                                                model: root.auraPresets
+                                                DColorButton {
+                                                    required property string modelData
+                                                    implicitWidth: 24
+                                                    implicitHeight: 24
+                                                    swatchColor: "#" + modelData
+                                                    onClicked: {
+                                                        root.auraColour1 = modelData;
+                                                        root.auraDraftDirty = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Column {
+                                        width: parent.width
+                                        spacing: Theme.spacingXS
+                                        visible: root.auraModeInfo !== null && root.auraModeInfo.colours >= 2
+
+                                        StyledText {
+                                            width: parent.width
+                                            text: "Colour 2"
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            color: Theme.surfaceVariantText
+                                        }
+                                        Row {
+                                            width: parent.width
+                                            spacing: Theme.spacingS
+                                            DTextField {
+                                                width: parent.width - 44
+                                                text: root.auraColour2
+                                                placeholderText: "RRGGBB"
+                                                maximumLength: 7
+                                                onEditingFinished: {
+                                                    root.auraColour2 = text;
+                                                    root.auraDraftDirty = true;
+                                                }
+                                            }
+                                            Rectangle {
+                                                width: 32
+                                                height: 32
+                                                radius: 16
+                                                color: Asusctl.normaliseHex(root.auraColour2) ? "#" + root.auraColour2 : "transparent"
+                                                border.color: Theme.outline
+                                                border.width: 1
+                                            }
+                                        }
+                                        Row {
+                                            spacing: Theme.spacingXS
+                                            Repeater {
+                                                model: root.auraPresets
+                                                DColorButton {
+                                                    required property string modelData
+                                                    implicitWidth: 24
+                                                    implicitHeight: 24
+                                                    swatchColor: "#" + modelData
+                                                    onClicked: {
+                                                        root.auraColour2 = modelData;
+                                                        root.auraDraftDirty = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Column {
+                                        width: parent.width
+                                        spacing: Theme.spacingXS
+                                        visible: root.auraModeInfo !== null && root.auraModeInfo.speed
+
+                                        StyledText {
+                                            width: parent.width
+                                            text: "Speed"
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            color: Theme.surfaceVariantText
+                                        }
+                                        Flow {
+                                            width: parent.width
+                                            spacing: Theme.spacingS
+                                            Repeater {
+                                                model: ["Low", "Med", "High"]
+                                                DButton {
+                                                    required property string modelData
+                                                    text: modelData
+                                                    variant: root.auraSpeed === modelData ? "filled" : "outlined"
+                                                    backgroundColor: root.auraSpeed === modelData ? Theme.primary : "transparent"
+                                                    textColor: root.auraSpeed === modelData ? Theme.onPrimary : Theme.primary
+                                                    onClicked: {
+                                                        root.auraSpeed = modelData;
+                                                        root.auraDraftDirty = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Column {
+                                        width: parent.width
+                                        spacing: Theme.spacingXS
+                                        visible: root.auraModeInfo !== null && root.auraModeInfo.direction
+
+                                        StyledText {
+                                            width: parent.width
+                                            text: "Direction"
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            color: Theme.surfaceVariantText
+                                        }
+                                        Flow {
+                                            width: parent.width
+                                            spacing: Theme.spacingS
+                                            Repeater {
+                                                model: ["Up", "Down", "Left", "Right"]
+                                                DButton {
+                                                    required property string modelData
+                                                    text: modelData
+                                                    variant: root.auraDirection === modelData ? "filled" : "outlined"
+                                                    backgroundColor: root.auraDirection === modelData ? Theme.primary : "transparent"
+                                                    textColor: root.auraDirection === modelData ? Theme.onPrimary : Theme.primary
+                                                    onClicked: {
+                                                        root.auraDirection = modelData;
+                                                        root.auraDraftDirty = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Column {
+                                        width: parent.width
+                                        spacing: Theme.spacingXS
+                                        visible: ctl.state.aura !== null && (ctl.state.aura.supportedZones || []).length > 1
+
+                                        StyledText {
+                                            width: parent.width
+                                            text: "Zone"
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            color: Theme.surfaceVariantText
+                                        }
+                                        Flow {
+                                            width: parent.width
+                                            spacing: Theme.spacingS
+                                            Repeater {
+                                                model: ctl.state.aura ? ctl.state.aura.supportedZones : []
+                                                DButton {
+                                                    required property int modelData
+                                                    text: Asusctl.auraZoneName(modelData)
+                                                    variant: root.auraZone === modelData ? "filled" : "outlined"
+                                                    backgroundColor: root.auraZone === modelData ? Theme.primary : "transparent"
+                                                    textColor: root.auraZone === modelData ? Theme.onPrimary : Theme.primary
+                                                    onClicked: {
+                                                        root.auraZone = modelData;
+                                                        root.auraDraftDirty = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    DButton {
+                                        text: "Apply effect"
+                                        iconName: "check"
+                                        variant: "filled"
+                                        backgroundColor: Theme.primary
+                                        textColor: Theme.onPrimary
+                                        enabled: root.auraModeInfo !== null
+                                        onClicked: {
+                                            root.auraDraftDirty = false;
+                                            ctl.setAuraEffect(root.auraMode, root.auraColour1, root.auraColour2, root.auraSpeed, root.auraDirection, root.auraZone);
+                                        }
+                                    }
+                                }
+
+                                Section {
+                                    title: "Aura Brightness"
+                                    visible: root.hasAsusData && ctl.state.aura !== null && (ctl.state.aura.supportedBrightness || []).length > 0
+
+                                    Flow {
+                                        width: parent.width
+                                        spacing: Theme.spacingS
+                                        Repeater {
+                                            model: ctl.state.aura ? ctl.state.aura.supportedBrightness : []
+                                            DButton {
+                                                required property int modelData
+                                                text: ["Off", "Low", "Med", "High"][modelData] || String(modelData)
+                                                variant: ctl.state.aura && ctl.state.aura.brightness === modelData ? "filled" : "outlined"
+                                                backgroundColor: ctl.state.aura && ctl.state.aura.brightness === modelData ? Theme.primary : "transparent"
+                                                textColor: ctl.state.aura && ctl.state.aura.brightness === modelData ? Theme.onPrimary : Theme.primary
+                                                onClicked: ctl.setAuraBrightness(modelData)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Section {
+                                    title: "Aura Power"
+                                    note: "Which power states the lighting stays on for."
+                                    visible: root.hasAsusData && ctl.state.aura !== null && (ctl.state.aura.supportedPowerZones || []).length > 0
+
+                                    Repeater {
+                                        model: ctl.state.aura ? ctl.state.aura.supportedPowerZones : []
+                                        Column {
+                                            id: powerZone
+                                            required property int modelData
+                                            readonly property int zoneId: modelData
+                                            width: parent.width
+                                            spacing: Theme.spacingXS
+
+                                            StyledText {
+                                                width: parent.width
+                                                text: Asusctl.auraPowerZoneName(powerZone.zoneId)
+                                                font.pixelSize: Theme.fontSizeMedium
+                                                font.weight: Font.Bold
+                                                color: Theme.surfaceVariantText
+                                            }
+
+                                            Repeater {
+                                                model: [
+                                                    { key: "boot", label: "Boot" },
+                                                    { key: "awake", label: "Awake" },
+                                                    { key: "sleep", label: "Sleep" },
+                                                    { key: "shutdown", label: "Shutdown" }
+                                                ]
+                                                DToggle {
+                                                    required property var modelData
+                                                    width: parent.width
+                                                    text: modelData.label
+                                                    checked: root.auraPowerValue(powerZone.zoneId, modelData.key)
+                                                    onToggled: function (checked) {
+                                                        ctl.setAuraPower(powerZone.zoneId,
+                                                            modelData.key === "boot" ? checked : root.auraPowerValue(powerZone.zoneId, "boot"),
+                                                            modelData.key === "awake" ? checked : root.auraPowerValue(powerZone.zoneId, "awake"),
+                                                            modelData.key === "sleep" ? checked : root.auraPowerValue(powerZone.zoneId, "sleep"),
+                                                            modelData.key === "shutdown" ? checked : root.auraPowerValue(powerZone.zoneId, "shutdown"));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+
                     }
                 }
 

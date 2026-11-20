@@ -4,8 +4,8 @@ import qs.Common
 import qs.Services
 
 // Headless behavioral harness for the widget surface. Drives the real widget
-// with stub QML modules and verifies the review fixes at runtime: header badge
-// sizing, selection styling, tuning-gate attribute coverage, and GPU dialog.
+// with stub QML modules and verifies header badge sizing, selection styling,
+// tuning-gate attribute coverage, and the GPU dialog.
 ShellRoot {
     Timer {
         interval: 100
@@ -96,12 +96,12 @@ ShellRoot {
             check("version.indicator.visibleOutsidePower", versionLabel !== null && effectivelyVisible(versionLabel));
             widget.tabIndex = 0;
 
-            // Important 4: the header badge must give its Loader implicit dimensions.
+            // The header badge must give its Loader implicit dimensions.
             var badge = find(pop, function(i) { return i.implicitWidth === 116 && i.implicitHeight === 24; });
             check("header.badge.implicitSize", badge !== null);
 
-            // Important 3: selected chips are filled, unselected chips are
-            // transparent with accent-colored text.
+            // Selected chips are filled; unselected chips are transparent with
+            // accent-colored text.
             var selected = button(pop, "Balanced");
             var unselected = button(pop, "Quiet");
             check("profile.chips.found", selected !== null && unselected !== null);
@@ -120,9 +120,9 @@ ShellRoot {
                 check("led.unselected.fill", ledOff.backgroundColor.a === 0);
             }
 
-            // Important 2: a device with only nv_dynamic_boost / ppt_pl2_sppt
-            // (no nv_tgp / ppt_pl1_spl) must still see the enable button and
-            // both power sections.
+            // A device with only nv_dynamic_boost / ppt_pl2_sppt (no nv_tgp /
+            // ppt_pl1_spl) must still see the enable button and both power
+            // sections.
             ctl.publish("tuningEnabled", false);
             ctl.publish("armoury", {
                 nv_dynamic_boost: { min: 0, current: 10, max: 25 },
@@ -135,12 +135,14 @@ ShellRoot {
             check("dbg.armouryKeys", ctl.state.armoury && Object.keys(ctl.state.armoury).join(",").indexOf("nv_dynamic_boost") !== -1, ctl.state.armoury ? Object.keys(ctl.state.armoury).join(",") : "null");
             widget.tabIndex = 4;
             check("dbg.currentTab", widget.currentTab === "tuning", String(widget.currentTab));
+            widget.tuningTabIndex = 0;
             var gate = section(pop, "Profile Tuning");
             check("gate.visible.partialAttrs", gate !== null && gate.visible === true, gate ? String(gate.visible) + " h=" + gate.height : "missing");
+            var cpu = section(pop, "CPU Power Limits");
+            check("cpu.visible.partialAttrs", cpu !== null && cpu.visible === true);
+            widget.tuningTabIndex = 1;
             var nvidia = section(pop, "NVIDIA Power");
             check("nvidia.visible.partialAttrs", nvidia !== null && nvidia.visible === true);
-            var cpu = section(pop, "CPU Power Limits (advanced)");
-            check("cpu.visible.partialAttrs", cpu !== null && cpu.visible === true);
 
             // No-range attributes (nv_tgp / nv_dynamic_boost on battery: 0..0)
             // must not present a writable slider.
@@ -150,11 +152,12 @@ ShellRoot {
                 ppt_pl1_spl: { min: 15, current: 45, max: 90 }
             });
             widget.tabIndex = 4;
+            widget.tuningTabIndex = 1;
             var tgpSlider = find(pop, function(i) { return i.hasOwnProperty("attrName") && i.attrName === "nv_tgp"; });
             check("range.noRange.slider.found", tgpSlider !== null);
             check("range.noRange.slider.adjustable", tgpSlider !== null && tgpSlider.adjustable === false, tgpSlider ? String(tgpSlider.adjustable) : "missing");
-            var rangeNote = find(pop, function(i) { return i.hasOwnProperty("text") && i.text === "No adjustable range in the current power state."; });
-            check("range.noRange.note", rangeNote !== null && rangeNote.visible === true);
+            var rangeNote = find(tgpSlider, function(i) { return i.hasOwnProperty("text") && i.text === "No adjustable range in the current power state."; });
+            check("range.noRange.note", rangeNote !== null && rangeNote.visible === true, rangeNote ? ("vis=" + rangeNote.visible + " h=" + rangeNote.height) : "missing");
 
             // GPU confirmation wiring.
             var dialog = find(pop, function(i) { return i.hasOwnProperty("lastOptions"); });
